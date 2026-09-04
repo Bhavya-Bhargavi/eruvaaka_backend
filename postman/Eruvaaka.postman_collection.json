@@ -1,0 +1,90 @@
+{
+  "info": {
+    "name": "Eruvaaka API",
+    "description": "API requests with automatic JWT token handling.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000" },
+    { "key": "token", "value": "" },
+    { "key": "article_slug", "value": "test-article" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"password\": \"secret123\"\n}" },
+            "url": { "raw": "{{base_url}}/api/auth/register", "host": ["{{base_url}}"], "path": ["api", "auth", "register"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Login - saves token",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "const response = pm.response.json();",
+                "pm.test('Login succeeded', function () { pm.expect(pm.response.code).to.be.oneOf([200, 401]); });",
+                "if (response.token) { pm.collectionVariables.set('token', response.token); }"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"secret123\"\n}" },
+            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Profile",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/users/profile", "host": ["{{base_url}}"], "path": ["api", "users", "profile"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/auth/logout", "host": ["{{base_url}}"], "path": ["api", "auth", "logout"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Bookmarks",
+      "item": [
+        {
+          "name": "List bookmarks",
+          "request": { "method": "GET", "url": { "raw": "{{base_url}}/api/users/bookmarks", "host": ["{{base_url}}"], "path": ["api", "users", "bookmarks"] } },
+          "response": []
+        },
+        {
+          "name": "Add bookmark",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"article_slug\": \"{{article_slug}}\",\n  \"title\": \"Test Article\",\n  \"url\": \"https://example.com/test-article\"\n}" },
+            "url": { "raw": "{{base_url}}/api/users/bookmarks", "host": ["{{base_url}}"], "path": ["api", "users", "bookmarks"] }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
