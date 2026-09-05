@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    'razorpay' => [
+        'key_id' => env('RAZORPAY_KEY_ID'),
+        'key_secret' => env('RAZORPAY_KEY_SECRET'),
+        'plans' => [
+            'monthly' => ['amount' => (int) env('RAZORPAY_MONTHLY_AMOUNT', 99900), 'days' => 30],
+            'yearly' => ['amount' => (int) env('RAZORPAY_YEARLY_AMOUNT', 999900), 'days' => 365],
+        ],
+    ],
+
 ];

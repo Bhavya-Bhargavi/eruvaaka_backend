@@ -20,4 +20,7 @@ Route::middleware('legacy.auth')->group(function (): void {
     Route::delete('users/bookmarks/{article_slug}', [AuthController::class, 'removeBookmark']);
     Route::post('payments/order', [PaymentController::class, 'createOrder']);
     Route::post('payments/verify', [PaymentController::class, 'verifyPayment']);
+    Route::post('create-order', [PaymentController::class, 'createOrder']);
+    Route::post('verify-payment', [PaymentController::class, 'verifyPayment']);
+    Route::get('subscription-status/{userId}', [PaymentController::class, 'subscriptionStatus']);
 });
