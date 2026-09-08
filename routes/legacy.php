@@ -20,9 +20,8 @@ Route::prefix('android_api/api')->group(function (): void {
     });
     Route::middleware('legacy.auth')->group(function (): void {
         Route::get('users/profile', [AuthController::class, 'profile']);
-        Route::get('users/bookmarks', [AuthController::class, 'listBookmarks']);
-        Route::post('users/bookmarks', [AuthController::class, 'addBookmark']);
-        Route::delete('users/bookmarks/{article_slug}', [AuthController::class, 'removeBookmark']);
+        Route::post('users/profile', [AuthController::class, 'updateProfile']);
+        Route::post('users/updateProfile', [AuthController::class, 'updateProfile']);
         Route::post('payments/order', [PaymentController::class, 'createOrder']);
         Route::post('payments/verify', [PaymentController::class, 'verifyPayment']);
     });

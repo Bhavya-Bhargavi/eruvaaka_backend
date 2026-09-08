@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PaymentOrder;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Services\Msg91SmsService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,7 +17,7 @@ class PaymentController extends Controller
 {
     public function createOrder(Request $request): JsonResponse
     {
-        $data = $request->validate(['userId' => ['nullable', 'integer'], 'plan' => ['required', 'string']]);
+        $data = $request->validate(['userId' => ['nullable', 'integer'], 'plan' => ['required', 'string', 'in:yearly']]);
         $userId = $this->userId($request);
         if (isset($data['userId']) && (int) $data['userId'] !== $userId) return response()->json(['message' => 'You can only create an order for yourself'], 403);
         $plan = config('services.razorpay.plans.'.$data['plan']);
@@ -70,6 +71,19 @@ class PaymentController extends Controller
             Subscription::create(['user_id' => $order->user_id, 'start_date' => $start, 'end_date' => $start->copy()->addDays((int) $plan['days']), 'plan_type' => $order->plan_type, 'status' => 'active']);
             User::whereKey($order->user_id)->update(['subscription_status' => 'active']);
         });
+        $user = User::find($order->user_id);
+        if ($user) {
+            try {
+                app(Msg91SmsService::class)->sendPaymentConfirmation($user->phone, $order->plan_type, $data['payment_id']);
+            } catch (\Throwable $exception) {
+                Log::warning('Payment confirmation SMS failed', [
+                    'exception' => get_class($exception),
+                    'message' => $exception->getMessage(),
+                    'user_id' => $user->id,
+                    'payment_id' => $data['payment_id'],
+                ]);
+            }
+        }
         return response()->json(['success' => true, 'message' => 'Payment verified successfully', 'payment_id' => $data['payment_id'], 'order_id' => $data['order_id']]);
     }
 

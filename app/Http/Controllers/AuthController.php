@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Bookmark;
 use App\Models\PasswordResetToken;
 use App\Models\RevokedToken;
 use App\Models\User;
+use App\Services\Msg91SmsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -25,8 +25,6 @@ class AuthController extends Controller
             'district' => ['required', 'string'],
             'mandal' => ['required', 'string'],
             'pincode' => ['required', 'string'],
-            'crop_interests' => ['required', 'array'],
-            'crop_interests.*' => ['string'],
         ]);
 
         $phone = $this->normalizePhone($data['phone']);
@@ -46,7 +44,6 @@ class AuthController extends Controller
             'district' => trim($data['district']),
             'mandal' => trim($data['mandal']),
             'pincode' => trim($data['pincode']),
-            'crop_interests' => array_values(array_map('trim', $data['crop_interests'])),
         ]);
 
         return response()->json(['message' => 'User registered successfully', 'user' => $this->publicUser($user)], 201);
@@ -71,10 +68,20 @@ class AuthController extends Controller
             'otp_expires_at' => now()->addMinutes(5),
         ]);
 
-        return response()->json([
-            'message' => 'OTP sent successfully',
-            'otp' => $otp,
-        ]);
+        if ($this->shouldUseTestOtp($user->phone)) {
+            return response()->json(['message' => 'Test OTP generated', 'otp' => $otp]);
+        }
+
+        if (config('services.msg91.enabled')) {
+            try {
+                app(Msg91SmsService::class)->sendOtp($user->phone, $otp);
+            } catch (\Throwable $exception) {
+                report($exception);
+                return response()->json(['message' => 'OTP delivery failed'], 502);
+            }
+        }
+
+        return response()->json(['message' => 'OTP sent successfully']);
     }
 
     public function verifyOtp(Request $request): JsonResponse
@@ -115,7 +122,37 @@ class AuthController extends Controller
     public function profile(Request $request): JsonResponse
     {
         $user = User::find((int) $request->attributes->get('jwt_claims')['id']);
-        return $user ? response()->json(['user' => $user]) : response()->json(['message' => 'User not found'], 404);
+        return $user ? response()->json(['user' => $this->publicUser($user, true)]) : response()->json(['message' => 'User not found'], 404);
+    }
+
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'firstName' => ['sometimes', 'required', 'string'],
+            'lastName' => ['sometimes', 'required', 'string'],
+            'email' => ['sometimes', 'nullable'],
+            'state' => ['sometimes', 'required', 'string'],
+            'district' => ['sometimes', 'required', 'string'],
+            'mandal' => ['sometimes', 'required', 'string'],
+            'pincode' => ['sometimes', 'required', 'string'],
+            'crop_interests' => ['sometimes', 'array'],
+            'crop_interests.*' => ['string'],
+        ]);
+
+        $user = User::find($this->userId($request));
+        if (!$user) return response()->json(['message' => 'User not found'], 404);
+
+        $updates = [];
+        foreach (['state', 'district', 'mandal', 'pincode'] as $field) {
+            if (array_key_exists($field, $data)) $updates[$field] = trim($data[$field]);
+        }
+        if (array_key_exists('firstName', $data)) $updates['first_name'] = trim($data['firstName']);
+        if (array_key_exists('lastName', $data)) $updates['last_name'] = trim($data['lastName']);
+        if (array_key_exists('email', $data)) $updates['email'] = $data['email'] === null ? null : trim($data['email']);
+        if (array_key_exists('crop_interests', $data)) $updates['crop_interests'] = array_values(array_map('trim', $data['crop_interests']));
+
+        $user->update($updates);
+        return response()->json(['message' => 'Profile updated successfully', 'user' => $this->publicUser($user->fresh(), true)]);
     }
 
     public function resendOtp(Request $request): JsonResponse
@@ -135,10 +172,20 @@ class AuthController extends Controller
             'otp_expires_at' => now()->addMinutes(5),
         ]);
 
-        return response()->json([
-            'message' => 'OTP resent successfully',
-            'otp' => $otp,
-        ]);
+        if ($this->shouldUseTestOtp($user->phone)) {
+            return response()->json(['message' => 'Test OTP generated', 'otp' => $otp]);
+        }
+
+        if (config('services.msg91.enabled')) {
+            try {
+                app(Msg91SmsService::class)->sendOtp($user->phone, $otp);
+            } catch (\Throwable $exception) {
+                report($exception);
+                return response()->json(['message' => 'OTP delivery failed'], 502);
+            }
+        }
+
+        return response()->json(['message' => 'OTP resent successfully']);
     }
 
     public function logout(Request $request): JsonResponse
@@ -148,33 +195,20 @@ class AuthController extends Controller
         return response()->json(['message' => 'Logged out successfully']);
     }
 
-    public function listBookmarks(Request $request): JsonResponse
-    {
-        $bookmarks = Bookmark::where('user_id', $this->userId($request))->orderByDesc('created_at')->get(['id', 'article_slug', 'title', 'url', 'created_at']);
-        return response()->json(['bookmarks' => $bookmarks]);
-    }
-
-    public function addBookmark(Request $request): JsonResponse
-    {
-        $data = $request->validate(['article_slug' => ['required', 'string'], 'title' => ['nullable', 'string'], 'url' => ['nullable', 'url']]);
-        $bookmark = Bookmark::updateOrCreate(['user_id' => $this->userId($request), 'article_slug' => trim($data['article_slug'])], ['title' => $data['title'] ?? null, 'url' => $data['url'] ?? null]);
-        return response()->json(['message' => 'Bookmark added', 'bookmark' => $bookmark], 201);
-    }
-
-    public function removeBookmark(Request $request, string $article_slug): JsonResponse
-    {
-        $deleted = Bookmark::where('user_id', $this->userId($request))->where('article_slug', $article_slug)->delete();
-        return $deleted ? response()->json(['message' => 'Bookmark removed']) : response()->json(['message' => 'Bookmark not found'], 404);
-    }
-
     private function normalizePhone(string $phone): string
     {
         return preg_replace('/\D+/', '', trim($phone));
     }
 
+    private function shouldUseTestOtp(string $phone): bool
+    {
+        return config('services.msg91.test_mode')
+            && in_array($this->normalizePhone($phone), array_map([$this, 'normalizePhone'], config('services.msg91.test_phones', [])), true);
+    }
+
     private function userId(Request $request): int { return (int) $request->attributes->get('jwt_claims')['id']; }
-    private function publicUser(User $user): array {
-        return [
+    private function publicUser(User $user, bool $includeCropInterests = false): array {
+        $data = [
             'id' => (int) $user->id,
             'first_name' => $user->first_name,
             'last_name' => $user->last_name,
@@ -184,9 +218,11 @@ class AuthController extends Controller
             'district' => $user->district,
             'mandal' => $user->mandal,
             'pincode' => $user->pincode,
-            'crop_interests' => $user->crop_interests ?? [],
             'role' => $user->role,
         ];
+
+        if ($includeCropInterests) $data['crop_interests'] = $user->crop_interests ?? [];
+        return $data;
     }
     private function base64UrlEncode(string $value): string { return rtrim(strtr(base64_encode($value), '+/', '-_'), '='); }
 }

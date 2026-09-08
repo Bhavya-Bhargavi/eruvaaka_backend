@@ -39,9 +39,20 @@ return [
         'key_id' => env('RAZORPAY_KEY_ID'),
         'key_secret' => env('RAZORPAY_KEY_SECRET'),
         'plans' => [
-            'monthly' => ['amount' => (int) env('RAZORPAY_MONTHLY_AMOUNT', 99900), 'days' => 30],
-            'yearly' => ['amount' => (int) env('RAZORPAY_YEARLY_AMOUNT', 999900), 'days' => 365],
+            'yearly' => ['amount' => (int) env('RAZORPAY_YEARLY_AMOUNT', 9999) * 100, 'days' => 365],
         ],
+    ],
+
+    'msg91' => [
+        'enabled' => (bool) env('MSG91_ENABLED', false),
+        'authkey' => env('MSG91_AUTH_KEY'),
+        'sender' => env('MSG91_SENDER_ID'),
+        'template_id' => env('MSG91_TEMPLATE_ID'),
+        'route' => env('MSG91_ROUTE', 4),
+        'country' => env('MSG91_COUNTRY', 91),
+        'ca_bundle' => env('MSG91_CA_BUNDLE'),
+        'test_mode' => (bool) env('OTP_TEST_MODE', false),
+        'test_phones' => array_values(array_filter(array_map('trim', explode(',', (string) env('OTP_TEST_PHONES', env('OTP_TEST_PHONE', '')))))),
     ],
 
 ];
