@@ -86,4 +86,20 @@ class AuthPhoneOtpTest extends TestCase
         $verifyResponse->assertStatus(200)
             ->assertJsonStructure(['message', 'token', 'user']);
     }
+
+    public function test_test_mode_returns_otp_when_no_phone_allowlist_is_configured(): void
+    {
+        config([
+            'services.msg91.test_mode' => true,
+            'services.msg91.test_phones' => [],
+        ]);
+
+        User::factory()->create(['phone' => '9876543212']);
+
+        $response = $this->postJson('/api/auth/login', ['phone' => '9876543212']);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('message', 'Test OTP generated')
+            ->assertJsonStructure(['otp']);
+    }
 }

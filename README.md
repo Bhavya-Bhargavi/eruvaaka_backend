@@ -35,7 +35,7 @@ The existing paths and JSON contracts are preserved:
 - `POST /api/payments/order`
 - `POST /api/payments/verify`
 
-Authenticated endpoints accept `Authorization: Bearer <token>`. Payment orders use Razorpay Test Mode credentials from `.env` and accept INR amounts from `1.00` through `500000.00`.
+Authenticated endpoints accept `Authorization: Bearer <token>`. Payment orders use the Razorpay credentials configured in `.env` and accept INR amounts from `1.00` through `500000.00`.
 
 ## Postman
 

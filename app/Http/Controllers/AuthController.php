@@ -202,8 +202,13 @@ class AuthController extends Controller
 
     private function shouldUseTestOtp(string $phone): bool
     {
-        return config('services.msg91.test_mode')
-            && in_array($this->normalizePhone($phone), array_map([$this, 'normalizePhone'], config('services.msg91.test_phones', [])), true);
+        $testMode = (bool) config('services.msg91.test_mode', false);
+        $configuredPhones = config('services.msg91.test_phones', []);
+
+        if (!$testMode) return false;
+        if (!$configuredPhones) return true;
+
+        return in_array($this->normalizePhone($phone), array_map([$this, 'normalizePhone'], $configuredPhones), true);
     }
 
     private function userId(Request $request): int { return (int) $request->attributes->get('jwt_claims')['id']; }

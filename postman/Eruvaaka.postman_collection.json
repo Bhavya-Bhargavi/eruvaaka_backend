@@ -7,7 +7,9 @@
   "variable": [
     { "key": "base_url", "value": "http://127.0.0.1:8000" },
     { "key": "token", "value": "" },
-    { "key": "article_slug", "value": "test-article" }
+    { "key": "order_id", "value": "" },
+    { "key": "payment_id", "value": "" },
+    { "key": "signature", "value": "" }
   ],
   "auth": {
     "type": "bearer",
@@ -67,20 +69,36 @@
       ]
     },
     {
-      "name": "Bookmarks",
+      "name": "Payments",
       "item": [
         {
-          "name": "List bookmarks",
-          "request": { "method": "GET", "url": { "raw": "{{base_url}}/api/users/bookmarks", "host": ["{{base_url}}"], "path": ["api", "users", "bookmarks"] } },
-          "response": []
-        },
-        {
-          "name": "Add bookmark",
+          "name": "Create Order",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "const response = pm.response.json();",
+                "pm.test('Razorpay order created', function () { pm.response.to.have.status(201); });",
+                "if (response.order_id) { pm.collectionVariables.set('order_id', response.order_id); }"
+              ]
+            }
+          }],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"article_slug\": \"{{article_slug}}\",\n  \"title\": \"Test Article\",\n  \"url\": \"https://example.com/test-article\"\n}" },
-            "url": { "raw": "{{base_url}}/api/users/bookmarks", "host": ["{{base_url}}"], "path": ["api", "users", "bookmarks"] }
+            "body": { "mode": "raw", "raw": "{\n  \"plan\": \"yearly\"\n}" },
+            "url": { "raw": "{{base_url}}/api/payments/order", "host": ["{{base_url}}"], "path": ["api", "payments", "order"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"order_id\": \"{{order_id}}\",\n  \"payment_id\": \"{{payment_id}}\",\n  \"signature\": \"{{signature}}\"\n}" },
+            "url": { "raw": "{{base_url}}/api/payments/verify", "host": ["{{base_url}}"], "path": ["api", "payments", "verify"] }
           },
           "response": []
         }
