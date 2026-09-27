@@ -35,6 +35,10 @@ return [
         ],
     ],
 
+    'eruvaaka' => [
+        'rss_url' => env('ERUVAAKA_RSS_URL', 'https://eruvaaka.com/feed/'),
+    ],
+
     'razorpay' => [
         'key_id' => env('RAZORPAY_KEY_ID'),
         'key_secret' => env('RAZORPAY_KEY_SECRET'),
