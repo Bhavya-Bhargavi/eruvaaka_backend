@@ -1,5 +1,7 @@
 <?php
 
+$yearlyAmount = (int) env('RAZORPAY_YEARLY_AMOUNT', 750);
+
 return [
 
     /*
@@ -43,7 +45,9 @@ return [
         'key_id' => env('RAZORPAY_KEY_ID'),
         'key_secret' => env('RAZORPAY_KEY_SECRET'),
         'plans' => [
-            'yearly' => ['amount' => (int) env('RAZORPAY_YEARLY_AMOUNT', 9999) * 100, 'days' => 365],
+            '1year' => ['amount' => (int) env('RAZORPAY_1YEAR_AMOUNT', $yearlyAmount) * 100, 'years' => 1],
+            '3year' => ['amount' => (int) env('RAZORPAY_3YEAR_AMOUNT', 20) * 100, 'years' => 3],
+            '5year' => ['amount' => (int) env('RAZORPAY_5YEAR_AMOUNT', 30) * 100, 'years' => 5],
         ],
     ],
 

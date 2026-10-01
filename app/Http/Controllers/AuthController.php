@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PasswordResetToken;
 use App\Models\RevokedToken;
+use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Msg91SmsService;
 use Illuminate\Http\JsonResponse;
@@ -116,6 +117,8 @@ class AuthController extends Controller
             'message' => 'OTP verified successfully',
             'token' => $header.'.'.$encodedPayload.'.'.$signature,
             'user' => $this->publicUser($user),
+            'subscription' => $this->subscriptionDetails($user),
+            'plans' => $this->availablePlans(),
         ]);
     }
 
@@ -198,6 +201,44 @@ class AuthController extends Controller
     private function normalizePhone(string $phone): string
     {
         return preg_replace('/\D+/', '', trim($phone));
+    }
+
+    private function subscriptionDetails(User $user): array
+    {
+        $subscription = Subscription::where('user_id', $user->id)
+            ->where('status', 'active')
+            ->where('end_date', '>', now())
+            ->latest('end_date')
+            ->first();
+
+        return [
+            'active' => $subscription !== null,
+            'plan_id' => $subscription
+                ? (string) (config('services.razorpay.plans.'.$subscription->plan_type.'.years') ?? ($subscription->plan_type === 'yearly' ? 1 : null))
+                : null,
+            'expiry_date' => $subscription?->end_date,
+        ];
+    }
+
+    private function availablePlans(): array
+    {
+        $configuredPlans = config('services.razorpay.plans', []);
+        $baseYearlyPrice = (int) (($configuredPlans['1year']['amount'] ?? 0) / 100);
+
+        return collect($configuredPlans)
+            ->map(function (array $plan) use ($baseYearlyPrice): array {
+                $years = (int) $plan['years'];
+
+                return [
+                    'id' => (string) $years,
+                    'name' => $years.' '.($years === 1 ? 'Year' : 'Years'),
+                    'years' => $years,
+                    'price' => (int) ($plan['amount'] / 100),
+                    'base_yearly_price' => (int) $baseYearlyPrice,
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     private function shouldUseTestOtp(string $phone): bool

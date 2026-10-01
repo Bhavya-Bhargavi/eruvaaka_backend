@@ -6,10 +6,16 @@
   },
   "variable": [
     { "key": "base_url", "value": "http://127.0.0.1:8000" },
+    { "key": "phone", "value": "9876543210" },
+    { "key": "otp", "value": "" },
     { "key": "token", "value": "" },
     { "key": "order_id", "value": "" },
     { "key": "payment_id", "value": "" },
-    { "key": "signature", "value": "" }
+    { "key": "signature", "value": "" },
+    { "key": "book_id", "value": "1" },
+    { "key": "forum_id", "value": "1" },
+    { "key": "epaper_id", "value": "1" },
+    { "key": "emagazine_id", "value": "2" }
   ],
   "auth": {
     "type": "bearer",
@@ -24,20 +30,42 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"password\": \"secret123\"\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"phone\": \"{{phone}}\",\n  \"password\": \"Password1\",\n  \"state\": \"Karnataka\",\n  \"district\": \"Bengaluru Urban\",\n  \"mandal\": \"Yelahanka\",\n  \"pincode\": \"560064\"\n}" },
             "url": { "raw": "{{base_url}}/api/auth/register", "host": ["{{base_url}}"], "path": ["api", "auth", "register"] }
           },
           "response": []
         },
         {
-          "name": "Login - saves token",
+          "name": "Login - Request OTP",
           "event": [{
             "listen": "test",
             "script": {
               "type": "text/javascript",
               "exec": [
                 "const response = pm.response.json();",
-                "pm.test('Login succeeded', function () { pm.expect(pm.response.code).to.be.oneOf([200, 401]); });",
+                "pm.test('OTP request accepted', function () { pm.response.to.have.status(200); });",
+                "if (response.otp) { pm.collectionVariables.set('otp', response.otp); }"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"{{phone}}\"\n}" },
+            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify OTP - saves token",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "const response = pm.response.json();",
+                "pm.test('OTP verified', function () { pm.response.to.have.status(200); });",
+                "pm.test('Subscriber fields returned', function () { pm.expect(response.user.eSubscriber).to.be.a('boolean'); pm.expect(response.user.plans).to.be.an('array'); });",
                 "if (response.token) { pm.collectionVariables.set('token', response.token); }"
               ]
             }
@@ -45,8 +73,8 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"secret123\"\n}" },
-            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] }
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"otp\": \"{{otp}}\"\n}" },
+            "url": { "raw": "{{base_url}}/api/auth/verify-otp", "host": ["{{base_url}}"], "path": ["api", "auth", "verify-otp"] }
           },
           "response": []
         },
@@ -63,6 +91,93 @@
           "request": {
             "method": "POST",
             "url": { "raw": "{{base_url}}/api/auth/logout", "host": ["{{base_url}}"], "path": ["api", "auth", "logout"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Library, Forums, and Publications",
+      "item": [
+        {
+          "name": "List Books",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/books", "host": ["{{base_url}}"], "path": ["api", "books"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Read Book",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/books/{{book_id}}", "host": ["{{base_url}}"], "path": ["api", "books", "{{book_id}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "List Forum Discussions",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/forums", "host": ["{{base_url}}"], "path": ["api", "forums"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Read Forum Discussion",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/forums/{{forum_id}}", "host": ["{{base_url}}"], "path": ["api", "forums", "{{forum_id}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Read Forum Comments",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/forums/{{forum_id}}/comments", "host": ["{{base_url}}"], "path": ["api", "forums", "{{forum_id}}", "comments"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Post Forum Comment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"body\": \"Testing a forum comment\"\n}" },
+            "url": { "raw": "{{base_url}}/api/forums/{{forum_id}}/comments", "host": ["{{base_url}}"], "path": ["api", "forums", "{{forum_id}}", "comments"] }
+          },
+          "response": []
+        },
+        {
+          "name": "List E-Papers",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/epapers", "host": ["{{base_url}}"], "path": ["api", "epapers"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Download E-Paper",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/epapers/{{epaper_id}}/download", "host": ["{{base_url}}"], "path": ["api", "epapers", "{{epaper_id}}", "download"] }
+          },
+          "response": []
+        },
+        {
+          "name": "List E-Magazines",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/emagazines", "host": ["{{base_url}}"], "path": ["api", "emagazines"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Download E-Magazine",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/emagazines/{{emagazine_id}}/download", "host": ["{{base_url}}"], "path": ["api", "emagazines", "{{emagazine_id}}", "download"] }
           },
           "response": []
         }
@@ -87,8 +202,50 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"plan\": \"yearly\"\n}" },
-            "url": { "raw": "{{base_url}}/api/payments/order", "host": ["{{base_url}}"], "path": ["api", "payments", "order"] }
+            "body": { "mode": "raw", "raw": "{\n  \"plan\": \"1year\"\n}" },
+            "url": { "raw": "{{base_url}}/api/create-order", "host": ["{{base_url}}"], "path": ["api", "create-order"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Order - 3year",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "const response = pm.response.json();",
+                "pm.test('Razorpay order created', function () { pm.response.to.have.status(201); });",
+                "if (response.order_id) { pm.collectionVariables.set('order_id', response.order_id); }"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"plan\": \"3year\"\n}" },
+            "url": { "raw": "{{base_url}}/api/create-order", "host": ["{{base_url}}"], "path": ["api", "create-order"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Order - 5year",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "const response = pm.response.json();",
+                "pm.test('Razorpay order created', function () { pm.response.to.have.status(201); });",
+                "if (response.order_id) { pm.collectionVariables.set('order_id', response.order_id); }"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"plan\": \"5year\"\n}" },
+            "url": { "raw": "{{base_url}}/api/create-order", "host": ["{{base_url}}"], "path": ["api", "create-order"] }
           },
           "response": []
         },

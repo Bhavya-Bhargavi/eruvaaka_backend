@@ -24,6 +24,7 @@ Route::prefix('android_api/api')->group(function (): void {
         Route::post('users/updateProfile', [AuthController::class, 'updateProfile']);
         Route::post('payments/order', [PaymentController::class, 'createOrder']);
         Route::post('payments/verify', [PaymentController::class, 'verifyPayment']);
+        Route::get('subscription-status/{userId}', [PaymentController::class, 'subscriptionStatus']);
     });
 });
 });

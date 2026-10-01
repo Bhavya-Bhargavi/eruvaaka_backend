@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\Subscription;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -54,6 +55,12 @@ class AuthPhoneOtpTest extends TestCase
 
     public function test_user_can_register_and_verify_phone_otp(): void
     {
+        config([
+            'services.razorpay.plans.1year.amount' => 75000,
+            'services.razorpay.plans.3year.amount' => 220000,
+            'services.razorpay.plans.5year.amount' => 370000,
+        ]);
+
         $registerResponse = $this->postJson('/api/auth/register', [
             'firstName' => 'Test',
             'lastName' => 'User',
@@ -84,7 +91,47 @@ class AuthPhoneOtpTest extends TestCase
         ]);
 
         $verifyResponse->assertStatus(200)
-            ->assertJsonStructure(['message', 'token', 'user']);
+            ->assertJsonStructure([
+                'message',
+                'token',
+                'user' => ['id', 'first_name'],
+                'subscription' => ['active', 'plan_id', 'expiry_date'],
+                'plans' => [['id', 'name', 'years', 'price', 'base_yearly_price']],
+            ])
+            ->assertJsonPath('subscription.active', false)
+            ->assertJsonPath('subscription.plan_id', null)
+            ->assertJsonPath('subscription.expiry_date', null)
+            ->assertJsonPath('plans.0', ['id' => '1', 'name' => '1 Year', 'years' => 1, 'price' => 100, 'base_yearly_price' => 100])
+            ->assertJsonPath('plans.1', ['id' => '3', 'name' => '3 Years', 'years' => 3, 'price' => 300, 'base_yearly_price' => 100])
+            ->assertJsonPath('plans.2', ['id' => '5', 'name' => '5 Years', 'years' => 5, 'price' => 500, 'base_yearly_price' => 100]);
+    }
+
+    public function test_verify_otp_returns_the_users_active_subscribed_plans(): void
+    {
+        $user = User::factory()->create(['phone' => '9876543213']);
+        $user->update(['otp_code' => '123456', 'otp_expires_at' => now()->addMinutes(5)]);
+        $subscription = Subscription::create([
+            'user_id' => $user->id,
+            'start_date' => now()->subDay(),
+            'end_date' => now()->addYears(3),
+            'plan_type' => '3year',
+            'status' => 'active',
+        ]);
+        Subscription::create([
+            'user_id' => $user->id,
+            'start_date' => now()->subYears(2),
+            'end_date' => now()->subDay(),
+            'plan_type' => '1year',
+            'status' => 'active',
+        ]);
+
+        $response = $this->postJson('/api/auth/verify-otp', ['phone' => $user->phone, 'otp' => '123456']);
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('subscription.active', true)
+            ->assertJsonPath('subscription.plan_id', '3')
+            ->assertJsonPath('subscription.expiry_date', $subscription->fresh()->end_date->toJSON());
     }
 
     public function test_test_mode_returns_otp_when_no_phone_allowlist_is_configured(): void
