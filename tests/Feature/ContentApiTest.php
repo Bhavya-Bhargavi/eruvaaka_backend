@@ -75,7 +75,7 @@ class ContentApiTest extends TestCase
             ->assertJsonMissingPath('data.0.user.phone');
     }
 
-    public function test_epaper_download_is_available_without_a_subscription_after_authentication(): void
+    public function test_epaper_download_is_available_without_authentication_or_subscription(): void
     {
         Storage::fake('local');
         Storage::disk('local')->put('images/test-epaper.svg', '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
@@ -100,7 +100,8 @@ class ContentApiTest extends TestCase
             ->assertJsonPath('data.0.title', 'Test E-Paper')
             ->assertJsonPath('data.0.download_url', '/api/epapers/'.$publication->id.'/download');
 
-        $this->get('/api/epapers/'.$publication->id.'/download')->assertUnauthorized();
+        $this->get('/api/epapers/'.$publication->id.'/download')
+            ->assertDownload('test-epaper.svg');
 
         $token = $this->tokenFor($user->id);
 
@@ -111,7 +112,7 @@ class ContentApiTest extends TestCase
         $this->assertSame(0, ForumComment::count());
     }
 
-    public function test_emagazine_download_is_available_without_a_subscription_after_authentication(): void
+    public function test_emagazine_download_is_available_without_authentication_or_subscription(): void
     {
         Storage::fake('local');
         Storage::disk('local')->put('images/test-emagazine.pdf', 'test magazine');
@@ -131,6 +132,9 @@ class ContentApiTest extends TestCase
             'pincode' => '123456',
         ]);
         $token = $this->tokenFor($user->id);
+
+        $this->get('/api/emagazines/'.$publication->id.'/download')
+            ->assertDownload('test-emagazine.pdf');
 
         $this->withToken($token)
             ->get('/api/emagazines/'.$publication->id.'/download')

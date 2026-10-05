@@ -147,6 +147,18 @@ CREATE TABLE IF NOT EXISTS `digital_publications` (
     UNIQUE KEY `digital_publications_type_slug_unique` (`type`, `slug`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+INSERT INTO `digital_publications`
+    (`type`, `slug`, `title`, `issue_date`, `file_path`, `is_available`, `created_at`, `updated_at`)
+VALUES
+    ('epaper', 'demo-epaper', 'Eruvaaka E-Paper', '2026-09-27', 'images/eruvaaka1.pdf', 1, NOW(), NOW()),
+    ('emagazine', 'demo-emagazine', 'Eruvaaka E-Magazine', '2026-09-27', 'images/eruvaaka2.pdf', 1, NOW(), NOW())
+ON DUPLICATE KEY UPDATE
+    `title` = VALUES(`title`),
+    `issue_date` = VALUES(`issue_date`),
+    `file_path` = VALUES(`file_path`),
+    `is_available` = VALUES(`is_available`),
+    `updated_at` = NOW();
+
 INSERT INTO `migrations` (`migration`, `batch`)
 SELECT '2026_09_05_000001_add_payment_subscription_fields', COALESCE(MAX(`batch`), 0) + 1
 FROM `migrations`

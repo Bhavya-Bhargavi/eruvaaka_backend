@@ -16,8 +16,8 @@ Route::get('forums/{forumId}', [ContentController::class, 'forum']);
 Route::get('forums/{forumId}/comments', [ContentController::class, 'comments']);
 Route::get('epapers', [ContentController::class, 'epapers']);
 Route::get('emagazines', [ContentController::class, 'emagazines']);
-Route::get('epapers/{publicationId}/download', [ContentController::class, 'downloadEpaper'])->middleware('legacy.auth');
-Route::get('emagazines/{publicationId}/download', [ContentController::class, 'downloadEmagazine'])->middleware('legacy.auth');
+Route::get('epapers/{publicationId}/download', [ContentController::class, 'downloadEpaper'])->whereNumber('publicationId');
+Route::get('emagazines/{publicationId}/download', [ContentController::class, 'downloadEmagazine'])->whereNumber('publicationId');
 
 Route::prefix('auth')->group(function (): void {
     Route::post('register', [AuthController::class, 'register']);

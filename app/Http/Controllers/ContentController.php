@@ -88,28 +88,30 @@ class ContentController extends Controller
         ], 201);
     }
 
-    public function epapers(): JsonResponse
+    public function epapers(Request $request): JsonResponse
     {
-        return $this->publications(Epaper::class, 'epapers');
+        return $this->publications(Epaper::class, 'epapers', $request);
     }
 
-    public function emagazines(): JsonResponse
+    public function emagazines(Request $request): JsonResponse
     {
-        return $this->publications(Emagazine::class, 'emagazines');
+        return $this->publications(Emagazine::class, 'emagazines', $request);
     }
 
-    public function downloadEpaper(string $publicationId, Request $request): Response
+    public function downloadEpaper(string $publicationId): Response
     {
         return $this->downloadPublication(Epaper::class, $publicationId);
     }
 
-    public function downloadEmagazine(string $publicationId, Request $request): Response
+    public function downloadEmagazine(string $publicationId): Response
     {
         return $this->downloadPublication(Emagazine::class, $publicationId);
     }
 
-    private function publications(string $modelClass, string $route): JsonResponse
+    private function publications(string $modelClass, string $route, Request $request): JsonResponse
     {
+        $basePath = rtrim($request->getBaseUrl(), '/');
+
         return response()->json([
             'data' => $modelClass::where('is_available', true)
                 ->latest('id')
@@ -119,7 +121,7 @@ class ContentController extends Controller
                     'slug' => $publication->slug,
                     'title' => $publication->title,
                     'issue_date' => $publication->issue_date,
-                    'download_url' => '/api/'.$route.'/'.$publication->id.'/download',
+                    'download_url' => $basePath.'/api/'.$route.'/'.$publication->id.'/download',
                 ]),
         ]);
     }
