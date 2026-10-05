@@ -7,7 +7,6 @@ use App\Models\Epaper;
 use App\Models\Emagazine;
 use App\Models\ForumComment;
 use App\Models\ForumDiscussion;
-use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -76,7 +75,7 @@ class ContentApiTest extends TestCase
             ->assertJsonMissingPath('data.0.user.phone');
     }
 
-    public function test_publication_download_is_served_from_private_storage_after_authentication(): void
+    public function test_epaper_download_is_available_without_a_subscription_after_authentication(): void
     {
         Storage::fake('local');
         Storage::disk('local')->put('images/test-epaper.svg', '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
@@ -107,24 +106,12 @@ class ContentApiTest extends TestCase
 
         $this->withToken($token)
             ->get('/api/epapers/'.$publication->id.'/download')
-            ->assertForbidden();
-
-        Subscription::create([
-            'user_id' => $user->id,
-            'start_date' => now()->subDay(),
-            'end_date' => now()->addYear(),
-            'plan_type' => '1year',
-            'status' => 'active',
-        ]);
-
-        $this->withToken($token)
-            ->get('/api/epapers/'.$publication->id.'/download')
             ->assertDownload('test-epaper.svg');
 
         $this->assertSame(0, ForumComment::count());
     }
 
-    public function test_emagazine_download_requires_an_active_subscription(): void
+    public function test_emagazine_download_is_available_without_a_subscription_after_authentication(): void
     {
         Storage::fake('local');
         Storage::disk('local')->put('images/test-emagazine.pdf', 'test magazine');
@@ -144,19 +131,6 @@ class ContentApiTest extends TestCase
             'pincode' => '123456',
         ]);
         $token = $this->tokenFor($user->id);
-
-        $this->withToken($token)
-            ->getJson('/api/emagazines/'.$publication->id.'/download')
-            ->assertForbidden()
-            ->assertJsonPath('next_action', 'show_magazine_options');
-
-        Subscription::create([
-            'user_id' => $user->id,
-            'start_date' => now()->subDay(),
-            'end_date' => now()->addYear(),
-            'plan_type' => '1year',
-            'status' => 'active',
-        ]);
 
         $this->withToken($token)
             ->get('/api/emagazines/'.$publication->id.'/download')

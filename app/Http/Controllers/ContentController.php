@@ -7,7 +7,6 @@ use App\Models\Epaper;
 use App\Models\Emagazine;
 use App\Models\ForumComment;
 use App\Models\ForumDiscussion;
-use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -101,36 +100,12 @@ class ContentController extends Controller
 
     public function downloadEpaper(string $publicationId, Request $request): Response
     {
-        if (!$this->hasActiveSubscription($request)) {
-            return $this->subscriptionRequiredResponse();
-        }
-
         return $this->downloadPublication(Epaper::class, $publicationId);
     }
 
     public function downloadEmagazine(string $publicationId, Request $request): Response
     {
-        if (!$this->hasActiveSubscription($request)) {
-            return $this->subscriptionRequiredResponse();
-        }
-
         return $this->downloadPublication(Emagazine::class, $publicationId);
-    }
-
-    private function hasActiveSubscription(Request $request): bool
-    {
-        return Subscription::where('user_id', (int) $request->attributes->get('jwt_claims')['id'])
-            ->where('status', 'active')
-            ->where('end_date', '>', now())
-            ->exists();
-    }
-
-    private function subscriptionRequiredResponse(): JsonResponse
-    {
-        return response()->json([
-            'message' => 'An active subscription is required to download magazines',
-            'next_action' => 'show_magazine_options',
-        ], 403);
     }
 
     private function publications(string $modelClass, string $route): JsonResponse

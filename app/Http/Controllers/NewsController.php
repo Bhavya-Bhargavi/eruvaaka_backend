@@ -15,8 +15,6 @@ class NewsController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $data = $request->validate(['limit' => ['sometimes', 'integer', 'min:1', 'max:50']]);
-
         try {
             $feed = Cache::remember('eruvaaka.news.feed', now()->addMinutes(10), fn (): array => $this->fetchFeed());
         } catch (Throwable $exception) {
@@ -25,13 +23,11 @@ class NewsController extends Controller
             return response()->json(['message' => 'News feed is temporarily unavailable'], 502);
         }
 
-        $limit = (int) ($data['limit'] ?? 50);
-
         return response()->json([
             'source' => config('services.eruvaaka.rss_url'),
             'last_build_date' => $feed['last_build_date'],
-            'count' => min(count($feed['items']), $limit),
-            'items' => array_slice($feed['items'], 0, $limit),
+            'count' => count($feed['items']),
+            'items' => $feed['items'],
         ]);
     }
 

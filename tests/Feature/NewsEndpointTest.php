@@ -24,6 +24,14 @@ class NewsEndpointTest extends TestCase
                             <description><![CDATA[<p>Summary</p>]]></description>
                             <content:encoded><![CDATA[<p>Full story</p>]]></content:encoded>
                         </item>
+                        <item>
+                            <title>Second news</title>
+                            <link>https://eruvaaka.com/second-news/</link>
+                        </item>
+                        <item>
+                            <title>Third news</title>
+                            <link>https://eruvaaka.com/third-news/</link>
+                        </item>
                     </channel>
                 </rss>
                 XML),
@@ -31,7 +39,8 @@ class NewsEndpointTest extends TestCase
 
         $this->getJson('/api/news')
             ->assertOk()
-            ->assertJsonPath('count', 1)
+            ->assertJsonPath('count', 3)
+            ->assertJsonCount(3, 'items')
             ->assertJsonPath('items.0.title', 'Test news')
             ->assertJsonPath('items.0.creator', 'Test Author')
             ->assertJsonPath('items.0.categories.0', 'Telangana')
