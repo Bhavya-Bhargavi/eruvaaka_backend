@@ -16,7 +16,7 @@ class NewsController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $feed = Cache::remember('eruvaaka.news.feed', now()->addMinutes(10), fn (): array => $this->fetchFeed());
+            $feed = Cache::remember('eruvaaka.news.feed.v2', now()->addMinutes(10), fn (): array => $this->fetchFeed());
         } catch (Throwable $exception) {
             report($exception);
 
@@ -52,6 +52,7 @@ class NewsController extends Controller
             throw new RuntimeException('The news feed returned invalid RSS XML.');
         }
 
+        $featuredImages = $this->fetchFeaturedImages();
         $items = [];
         foreach ($xml->channel->item as $item) {
             $content = $item->children('content', true);
@@ -70,6 +71,7 @@ class NewsController extends Controller
                 'categories' => $categories,
                 'description' => (string) $item->description,
                 'content' => (string) $content->encoded,
+                'thumbnail' => $featuredImages[$this->normalizeArticleUrl((string) $item->link)] ?? null,
             ];
         }
 
@@ -77,5 +79,84 @@ class NewsController extends Controller
             'last_build_date' => (string) $xml->channel->lastBuildDate,
             'items' => $items,
         ];
+    }
+
+    private function fetchFeaturedImages(): array
+    {
+        try {
+            $posts = Http::acceptJson()
+                ->connectTimeout(5)
+                ->timeout(10)
+                ->get((string) config('services.eruvaaka.wp_api_posts_url'), [
+                    'per_page' => 100,
+                    '_fields' => 'link,featured_media',
+                ])
+                ->throw()
+                ->json();
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return [];
+        }
+
+        if (!is_array($posts)) {
+            return [];
+        }
+
+        $postsByMediaId = [];
+        foreach ($posts as $post) {
+            $link = $post['link'] ?? null;
+            $mediaId = $post['featured_media'] ?? null;
+
+            if (is_string($link) && is_numeric($mediaId) && (int) $mediaId > 0) {
+                $postsByMediaId[(int) $mediaId] = $this->normalizeArticleUrl($link);
+            }
+        }
+
+        if ($postsByMediaId === []) {
+            return [];
+        }
+
+        try {
+            $mediaItems = Http::acceptJson()
+                ->connectTimeout(5)
+                ->timeout(10)
+                ->get((string) config('services.eruvaaka.wp_api_media_url'), [
+                    'include' => array_keys($postsByMediaId),
+                    'per_page' => 100,
+                    '_fields' => 'id,source_url,media_details',
+                ])
+                ->throw()
+                ->json();
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return [];
+        }
+
+        if (!is_array($mediaItems)) {
+            return [];
+        }
+
+        $images = [];
+        foreach ($mediaItems as $media) {
+            $mediaId = $media['id'] ?? null;
+            $sizes = $media['media_details']['sizes'] ?? [];
+            $thumbnail = $sizes['tnm-m-2_1']['source_url']
+                ?? $sizes['medium_large']['source_url']
+                ?? $media['source_url']
+                ?? null;
+
+            if (is_numeric($mediaId) && isset($postsByMediaId[(int) $mediaId]) && is_string($thumbnail) && $thumbnail !== '') {
+                $images[$postsByMediaId[(int) $mediaId]] = $thumbnail;
+            }
+        }
+
+        return $images;
+    }
+
+    private function normalizeArticleUrl(string $url): string
+    {
+        return rtrim($url, '/');
     }
 }

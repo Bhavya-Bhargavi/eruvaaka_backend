@@ -35,6 +35,21 @@ class NewsEndpointTest extends TestCase
                     </channel>
                 </rss>
                 XML),
+            'eruvaaka.com/wp-json/wp/v2/posts*' => Http::response([[
+                'link' => 'https://eruvaaka.com/test-news/',
+                'featured_media' => 37966,
+            ]]),
+            'eruvaaka.com/wp-json/wp/v2/media*' => Http::response([[
+                'id' => 37966,
+                'media_details' => [
+                    'sizes' => [
+                        'tnm-m-2_1' => [
+                            'source_url' => 'https://eruvaaka.com/wp-content/uploads/test-news-680x400.jpg',
+                        ],
+                    ],
+                ],
+                'source_url' => 'https://eruvaaka.com/wp-content/uploads/test-news.jpg',
+            ]]),
         ]);
 
         $this->getJson('/api/news')
@@ -44,6 +59,7 @@ class NewsEndpointTest extends TestCase
             ->assertJsonPath('items.0.title', 'Test news')
             ->assertJsonPath('items.0.creator', 'Test Author')
             ->assertJsonPath('items.0.categories.0', 'Telangana')
+            ->assertJsonPath('items.0.thumbnail', 'https://eruvaaka.com/wp-content/uploads/test-news-680x400.jpg')
             ->assertJsonPath('items.0.content', '<p>Full story</p>');
     }
 }

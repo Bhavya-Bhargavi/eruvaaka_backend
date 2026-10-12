@@ -39,6 +39,8 @@ return [
 
     'eruvaaka' => [
         'rss_url' => env('ERUVAAKA_RSS_URL', 'https://eruvaaka.com/feed/'),
+        'wp_api_posts_url' => env('ERUVAAKA_WP_API_POSTS_URL', 'https://eruvaaka.com/wp-json/wp/v2/posts'),
+        'wp_api_media_url' => env('ERUVAAKA_WP_API_MEDIA_URL', 'https://eruvaaka.com/wp-json/wp/v2/media'),
     ],
 
     'razorpay' => [
