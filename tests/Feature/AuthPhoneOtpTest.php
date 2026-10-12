@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Models\Subscription;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class AuthPhoneOtpTest extends TestCase
@@ -56,6 +57,8 @@ class AuthPhoneOtpTest extends TestCase
     public function test_user_can_register_and_verify_phone_otp(): void
     {
         config([
+            'services.infinito_sms.test_mode' => true,
+            'services.infinito_sms.test_phones' => [],
             'services.razorpay.plans.1year.amount' => 75000,
             'services.razorpay.plans.3year.amount' => 220000,
             'services.razorpay.plans.5year.amount' => 370000,
@@ -137,8 +140,8 @@ class AuthPhoneOtpTest extends TestCase
     public function test_test_mode_returns_otp_when_no_phone_allowlist_is_configured(): void
     {
         config([
-            'services.msg91.test_mode' => true,
-            'services.msg91.test_phones' => [],
+            'services.infinito_sms.test_mode' => true,
+            'services.infinito_sms.test_phones' => [],
         ]);
 
         User::factory()->create(['phone' => '9876543212']);
@@ -148,5 +151,31 @@ class AuthPhoneOtpTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('message', 'Test OTP generated')
             ->assertJsonStructure(['otp']);
+    }
+
+    public function test_login_sends_otp_through_infinito(): void
+    {
+        config([
+            'services.infinito_sms.enabled' => true,
+            'services.infinito_sms.test_mode' => false,
+            'services.infinito_sms.endpoint' => 'https://sms.example.test/unified/v2/send',
+            'services.infinito_sms.api_token' => 'test-api-token',
+            'services.infinito_sms.from' => 'APPROVED',
+            'services.infinito_sms.otp_dlt_template_id' => 'otp-template-id',
+            'services.infinito_sms.otp_template' => 'Your Eruvaaka OTP is {otp}.',
+        ]);
+        Http::fake(['*' => Http::response([
+            'status' => 'Success',
+            'statuscode' => 200,
+            'messageack' => ['guids' => [['guid' => 'test-guid', 'errors' => []]]],
+        ], 200)]);
+        User::factory()->create(['phone' => '9876543215']);
+
+        $this->postJson('/api/auth/login', ['phone' => '9876543215'])
+            ->assertOk()
+            ->assertJsonPath('message', 'OTP sent successfully');
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://sms.example.test/unified/v2/send'
+            && ($request->data()['sms']['messages'][0]['addresses'][0]['to'] ?? null) === '919876543215');
     }
 }

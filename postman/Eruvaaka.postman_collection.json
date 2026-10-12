@@ -6,7 +6,7 @@
   },
   "variable": [
     { "key": "base_url", "value": "http://127.0.0.1:8000" },
-    { "key": "phone", "value": "9876543210" },
+    { "key": "phone", "value": "8618600812" },
     { "key": "otp", "value": "" },
     { "key": "token", "value": "" },
     { "key": "order_id", "value": "" },
@@ -15,13 +15,54 @@
     { "key": "book_id", "value": "1" },
     { "key": "forum_id", "value": "1" },
     { "key": "epaper_id", "value": "1" },
-    { "key": "emagazine_id", "value": "2" }
+    { "key": "emagazine_id", "value": "2" },
+    { "key": "infinito_api_token", "value": "" },
+    { "key": "infinito_sms_from", "value": "ERUVKA" },
+    { "key": "infinito_sms_otp_dlt_template_id", "value": "1777179143324399534" },
+    { "key": "infinito_sms_test_text", "value": "Your OTP for logging in to the Eruvaaka App is 123456. If you did not request this OTP, please contact our support team.\\\" Eruvaaka Publications." }
   ],
   "auth": {
     "type": "bearer",
     "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
   },
   "item": [
+    {
+      "name": "Infinito SMS - Direct Test",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{infinito_api_token}}", "type": "string" }]
+        },
+        "header": [
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"apiver\": \"1.0\",\n  \"sms\": {\n    \"ver\": \"2.0\",\n    \"dlr\": {\n      \"url\": \"\"\n    },\n    \"messages\": [\n      {\n        \"udh\": \"0\",\n        \"dlttemplateid\": \"{{infinito_sms_otp_dlt_template_id}}\",\n        \"dltcontenttype\": 1,\n        \"coding\": 1,\n        \"text\": \"{{infinito_sms_test_text}}\",\n        \"property\": 0,\n        \"id\": \"1\",\n        \"addresses\": [\n          {\n            \"from\": \"{{infinito_sms_from}}\",\n            \"to\": \"91{{phone}}\",\n            \"seq\": \"otp-test\",\n            \"tag\": \"OTP delivery test\"\n          }\n        ]\n      }\n    ]\n  }\n}"
+        },
+        "event": [{
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const response = pm.response.json();",
+              "pm.test('Infinito accepted the request', function () { pm.response.to.have.status(200); });",
+              "const errors = (response.messageack?.guids || []).flatMap((guid) => guid.errors || []);",
+              "pm.test('SMS has no provider-level errors', function () { pm.expect(errors).to.be.empty; });"
+            ]
+          }
+        }],
+        "url": {
+          "raw": "https://api.goinfinito.com/unified/v2/send",
+          "protocol": "https",
+          "host": ["api", "goinfinito", "com"],
+          "path": ["unified", "v2", "send"]
+        }
+      },
+      "response": []
+    },
     {
       "name": "Authentication",
       "item": [
@@ -57,6 +98,16 @@
           "response": []
         },
         {
+          "name": "Resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"{{phone}}\"\n}" },
+            "url": { "raw": "{{base_url}}/api/auth/resend-otp", "host": ["{{base_url}}"], "path": ["api", "auth", "resend-otp"] }
+          },
+          "response": []
+        },
+        {
           "name": "Verify OTP - saves token",
           "event": [{
             "listen": "test",
@@ -65,7 +116,7 @@
               "exec": [
                 "const response = pm.response.json();",
                 "pm.test('OTP verified', function () { pm.response.to.have.status(200); });",
-                "pm.test('Subscriber fields returned', function () { pm.expect(response.user.eSubscriber).to.be.a('boolean'); pm.expect(response.user.plans).to.be.an('array'); });",
+                "pm.test('Subscription details returned', function () { pm.expect(response.subscription.active).to.be.a('boolean'); pm.expect(response.plans).to.be.an('array'); });",
                 "if (response.token) { pm.collectionVariables.set('token', response.token); }"
               ]
             }

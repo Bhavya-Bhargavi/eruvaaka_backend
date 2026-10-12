@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PaymentOrder;
 use App\Models\Subscription;
 use App\Models\User;
-use App\Services\Msg91SmsService;
+use App\Services\InfinitoSmsService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -77,7 +77,7 @@ class PaymentController extends Controller
         $user = User::find($order->user_id);
         if ($user) {
             try {
-                app(Msg91SmsService::class)->sendPaymentConfirmation($user->phone, $planType, $data['payment_id']);
+                app(InfinitoSmsService::class)->sendPaymentConfirmation($user->phone, $planType, $data['payment_id']);
             } catch (\Throwable $exception) {
                 Log::warning('Payment confirmation SMS failed', [
                     'exception' => get_class($exception),

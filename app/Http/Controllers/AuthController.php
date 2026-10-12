@@ -6,7 +6,7 @@ use App\Models\PasswordResetToken;
 use App\Models\RevokedToken;
 use App\Models\Subscription;
 use App\Models\User;
-use App\Services\Msg91SmsService;
+use App\Services\InfinitoSmsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -63,23 +63,29 @@ class AuthController extends Controller
             return response()->json(['message' => 'User not found'], 404);
         }
 
+        $testOtp = $this->shouldUseTestOtp($user->phone);
+        if (!$testOtp && !config('services.infinito_sms.enabled')) {
+            return response()->json(['message' => 'OTP SMS provider is not configured'], 503);
+        }
+
         $otp = (string) random_int(100000, 999999);
         $user->update([
             'otp_code' => $otp,
             'otp_expires_at' => now()->addMinutes(5),
         ]);
 
-        if ($this->shouldUseTestOtp($user->phone)) {
+        if ($testOtp) {
             return response()->json(['message' => 'Test OTP generated', 'otp' => $otp]);
         }
 
-        if (config('services.msg91.enabled')) {
-            try {
-                app(Msg91SmsService::class)->sendOtp($user->phone, $otp);
-            } catch (\Throwable $exception) {
-                report($exception);
-                return response()->json(['message' => 'OTP delivery failed'], 502);
-            }
+        try {
+            app(InfinitoSmsService::class)->sendOtp($user->phone, $otp);
+        } catch (\InvalidArgumentException $exception) {
+            report($exception);
+            return response()->json(['message' => 'OTP SMS provider is not configured'], 503);
+        } catch (\Throwable $exception) {
+            report($exception);
+            return response()->json(['message' => 'OTP delivery failed'], 502);
         }
 
         return response()->json(['message' => 'OTP sent successfully']);
@@ -169,23 +175,29 @@ class AuthController extends Controller
             return response()->json(['message' => 'User not found'], 404);
         }
 
+        $testOtp = $this->shouldUseTestOtp($user->phone);
+        if (!$testOtp && !config('services.infinito_sms.enabled')) {
+            return response()->json(['message' => 'OTP SMS provider is not configured'], 503);
+        }
+
         $otp = (string) random_int(100000, 999999);
         $user->update([
             'otp_code' => $otp,
             'otp_expires_at' => now()->addMinutes(5),
         ]);
 
-        if ($this->shouldUseTestOtp($user->phone)) {
+        if ($testOtp) {
             return response()->json(['message' => 'Test OTP generated', 'otp' => $otp]);
         }
 
-        if (config('services.msg91.enabled')) {
-            try {
-                app(Msg91SmsService::class)->sendOtp($user->phone, $otp);
-            } catch (\Throwable $exception) {
-                report($exception);
-                return response()->json(['message' => 'OTP delivery failed'], 502);
-            }
+        try {
+            app(InfinitoSmsService::class)->sendOtp($user->phone, $otp);
+        } catch (\InvalidArgumentException $exception) {
+            report($exception);
+            return response()->json(['message' => 'OTP SMS provider is not configured'], 503);
+        } catch (\Throwable $exception) {
+            report($exception);
+            return response()->json(['message' => 'OTP delivery failed'], 502);
         }
 
         return response()->json(['message' => 'OTP resent successfully']);
@@ -243,8 +255,8 @@ class AuthController extends Controller
 
     private function shouldUseTestOtp(string $phone): bool
     {
-        $testMode = (bool) config('services.msg91.test_mode', false);
-        $configuredPhones = config('services.msg91.test_phones', []);
+        $testMode = (bool) config('services.infinito_sms.test_mode', false);
+        $configuredPhones = config('services.infinito_sms.test_phones', []);
 
         if (!$testMode) return false;
         if (!$configuredPhones) return true;

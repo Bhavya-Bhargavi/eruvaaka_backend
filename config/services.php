@@ -51,16 +51,22 @@ return [
         ],
     ],
 
-    'msg91' => [
-        'enabled' => (bool) env('MSG91_ENABLED', false),
-        'authkey' => env('MSG91_AUTH_KEY'),
-        'sender' => env('MSG91_SENDER_ID'),
-        'template_id' => env('MSG91_TEMPLATE_ID'),
-        'route' => env('MSG91_ROUTE', 4),
-        'country' => env('MSG91_COUNTRY', 91),
-        'ca_bundle' => env('MSG91_CA_BUNDLE'),
-        'test_mode' => (bool) env('OTP_TEST_MODE', false),
-        'test_phones' => array_values(array_filter(array_map('trim', explode(',', (string) env('OTP_TEST_PHONES', env('OTP_TEST_PHONE', '')))))),
+    'infinito_sms' => [
+        'enabled' => (bool) env('INFINITO_SMS_ENABLED', false),
+        'endpoint' => env('INFINITO_API_URL', 'https://api.goinfinito.com/unified/v2/send'),
+        'api_token' => env('INFINITO_API_TOKEN'),
+        'from' => env('INFINITO_SMS_FROM'),
+        'otp_dlt_template_id' => env('INFINITO_SMS_OTP_DLT_TEMPLATE_ID'),
+        'otp_template' => env('INFINITO_SMS_OTP_TEMPLATE'),
+        'payment_dlt_template_id' => env('INFINITO_SMS_PAYMENT_DLT_TEMPLATE_ID'),
+        'payment_template' => env('INFINITO_SMS_PAYMENT_TEMPLATE'),
+        'dlt_content_type' => env('INFINITO_SMS_DLT_CONTENT_TYPE', 1),
+        'property' => env('INFINITO_SMS_PROPERTY', 0),
+        'country_prefix' => env('INFINITO_SMS_COUNTRY_PREFIX', '91'),
+        'timeout' => env('INFINITO_SMS_TIMEOUT', 10),
+        'ca_bundle' => env('INFINITO_CA_BUNDLE'),
+        'test_mode' => (bool) env('INFINITO_SMS_TEST_MODE', false),
+        'test_phones' => array_values(array_filter(array_map('trim', explode(',', (string) env('INFINITO_SMS_TEST_PHONES', ''))))),
     ],
 
 ];
