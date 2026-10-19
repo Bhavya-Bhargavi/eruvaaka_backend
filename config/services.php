@@ -58,7 +58,6 @@ return [
         'test_mode' => (bool) env('OTP_TEST_MODE', false),
         'test_phone' => env('OTP_TEST_PHONE'),
     ],
-
     'infinito_sms' => [
         'enabled' => (bool) env('INFINITO_SMS_ENABLED', false),
         'endpoint' => env('INFINITO_API_URL', 'https://api.goinfinito.com/unified/v2/send'),
