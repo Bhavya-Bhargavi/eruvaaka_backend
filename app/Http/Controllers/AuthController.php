@@ -71,7 +71,7 @@ class AuthController extends Controller
         $otp = (string) random_int(100000, 999999);
         $user->update([
             'otp_code' => $otp,
-            'otp_expires_at' => now()->addMinutes(5),
+            'otp_expires_at' => now()->addMinutes((int) config('services.otp.expiry_minutes', 5)),
         ]);
 
         if ($testOtp) {
@@ -183,7 +183,7 @@ class AuthController extends Controller
         $otp = (string) random_int(100000, 999999);
         $user->update([
             'otp_code' => $otp,
-            'otp_expires_at' => now()->addMinutes(5),
+            'otp_expires_at' => now()->addMinutes((int) config('services.otp.expiry_minutes', 5)),
         ]);
 
         if ($testOtp) {
@@ -255,10 +255,15 @@ class AuthController extends Controller
 
     private function shouldUseTestOtp(string $phone): bool
     {
-        $testMode = (bool) config('services.infinito_sms.test_mode', false);
+        $testMode = (bool) config('services.otp.test_mode', false)
+            || (bool) config('services.infinito_sms.test_mode', false);
+        $testPhone = config('services.otp.test_phone');
         $configuredPhones = config('services.infinito_sms.test_phones', []);
 
         if (!$testMode) return false;
+        if ($testPhone !== null && trim((string) $testPhone) !== '') {
+            return $this->normalizePhone((string) $testPhone) === $this->normalizePhone($phone);
+        }
         if (!$configuredPhones) return true;
 
         return in_array($this->normalizePhone($phone), array_map([$this, 'normalizePhone'], $configuredPhones), true);

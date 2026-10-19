@@ -153,6 +153,38 @@ class AuthPhoneOtpTest extends TestCase
             ->assertJsonStructure(['otp']);
     }
 
+    public function test_configured_otp_expiry_is_used_for_login_and_resend(): void
+    {
+        config([
+            'services.otp.expiry_minutes' => 2,
+            'services.otp.test_mode' => true,
+            'services.otp.test_phone' => '9876543216',
+        ]);
+        $now = now();
+        $this->travelTo($now);
+        User::factory()->create(['phone' => '9876543216']);
+
+        $this->postJson('/api/auth/login', ['phone' => '9876543216'])
+            ->assertOk()
+            ->assertJsonPath('message', 'Test OTP generated');
+
+        $user = User::where('phone', '9876543216')->firstOrFail();
+        $this->assertEquals(
+            $now->copy()->addMinutes(2)->toDateTimeString(),
+            $user->otp_expires_at->toDateTimeString()
+        );
+
+        $this->travelTo($now->copy()->addMinute());
+        $this->postJson('/api/auth/resend-otp', ['phone' => '9876543216'])
+            ->assertOk()
+            ->assertJsonPath('message', 'Test OTP generated');
+
+        $this->assertEquals(
+            $now->copy()->addMinutes(3)->toDateTimeString(),
+            $user->fresh()->otp_expires_at->toDateTimeString()
+        );
+    }
+
     public function test_login_sends_otp_through_infinito(): void
     {
         config([
