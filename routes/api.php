@@ -34,6 +34,7 @@ Route::middleware('legacy.auth')->group(function (): void {
     Route::post('users/updateProfile', [AuthController::class, 'updateProfile']);
     Route::post('forums/{forumId}/comments', [ContentController::class, 'postComment'])->middleware('throttle:10,1');
     Route::post('payments/order', [PaymentController::class, 'createOrder']);
+    Route::post('coupon/validate', [PaymentController::class, 'validateCoupon']);
     Route::post('payments/verify', [PaymentController::class, 'verifyPayment']);
     Route::post('create-order', [PaymentController::class, 'createOrder']);
     Route::post('verify-payment', [PaymentController::class, 'verifyPayment']);

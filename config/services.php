@@ -47,9 +47,16 @@ return [
         'key_id' => env('RAZORPAY_KEY_ID'),
         'key_secret' => env('RAZORPAY_KEY_SECRET'),
         'plans' => [
-            '1year' => ['amount' => (int) env('RAZORPAY_1YEAR_AMOUNT', $yearlyAmount) * 100, 'years' => 1],
-            '3year' => ['amount' => (int) env('RAZORPAY_3YEAR_AMOUNT', 20) * 100, 'years' => 3],
-            '5year' => ['amount' => (int) env('RAZORPAY_5YEAR_AMOUNT', 30) * 100, 'years' => 5],
+            '1year' => ['name' => '1 Year', 'type' => 'legacy', 'amount' => (int) env('RAZORPAY_1YEAR_AMOUNT', $yearlyAmount) * 100, 'years' => 1, 'products' => ['emagazine', 'print_magazine']],
+            '3year' => ['name' => '3 Years', 'type' => 'legacy', 'amount' => (int) env('RAZORPAY_3YEAR_AMOUNT', 20) * 100, 'years' => 3, 'products' => ['emagazine', 'print_magazine']],
+            '5year' => ['name' => '5 Years', 'type' => 'legacy', 'amount' => (int) env('RAZORPAY_5YEAR_AMOUNT', 30) * 100, 'years' => 5, 'products' => ['emagazine', 'print_magazine']],
+            'emagazine_monthly' => ['name' => 'E-Magazine Monthly', 'type' => 'emagazine', 'amount' => (int) env('RAZORPAY_EMAGAZINE_MONTHLY_AMOUNT', 99) * 100, 'months' => 1, 'products' => ['emagazine']],
+            'print_magazine_monthly' => ['name' => 'Print Magazine Monthly', 'type' => 'print_magazine', 'amount' => (int) env('RAZORPAY_PRINT_MAGAZINE_MONTHLY_AMOUNT', 299) * 100, 'months' => 1, 'products' => ['print_magazine']],
+            'combo_monthly' => ['name' => 'E + Print Combo', 'type' => 'combo', 'amount' => (int) env('RAZORPAY_COMBO_MONTHLY_AMOUNT', 349) * 100, 'months' => 1, 'products' => ['emagazine', 'print_magazine']],
+        ],
+        'entitlement_plans' => [
+            'emagazine' => 'emagazine_monthly',
+            'print_magazine' => 'print_magazine_monthly',
         ],
     ],
 

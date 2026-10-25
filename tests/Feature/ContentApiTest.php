@@ -75,6 +75,34 @@ class ContentApiTest extends TestCase
             ->assertJsonMissingPath('data.0.user.phone');
     }
 
+    public function test_manual_discussion_topics_are_listed_and_accept_comments(): void
+    {
+        $this->seed(\Database\Seeders\ContentDemoSeeder::class);
+
+        $topics = $this->getJson('/api/forums')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $topicIds = collect($topics->json('data'))->pluck('id', 'title');
+        $this->assertSame(['Discussion1', 'Discussion2'], collect($topics->json('data'))->pluck('title')->sort()->values()->all());
+
+        $user = User::create([
+            'first_name' => 'Test',
+            'last_name' => 'Participant',
+            'phone' => '9876543291',
+            'password_hash' => 'unused',
+            'state' => 'State',
+            'district' => 'District',
+            'mandal' => 'Mandal',
+            'pincode' => '123456',
+        ]);
+
+        $this->withToken($this->tokenFor($user->id))
+            ->postJson('/api/forums/'.$topicIds['Discussion1'].'/comments', ['body' => 'My comment'])
+            ->assertCreated()
+            ->assertJsonPath('data.body', 'My comment');
+    }
+
     public function test_epaper_download_is_available_without_authentication_or_subscription(): void
     {
         Storage::fake('local');

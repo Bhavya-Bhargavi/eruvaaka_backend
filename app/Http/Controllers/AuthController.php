@@ -7,8 +7,10 @@ use App\Models\RevokedToken;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Services\InfinitoSmsService;
+use App\Services\MagazinePlanCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
@@ -26,6 +28,13 @@ class AuthController extends Controller
             'district' => ['required', 'string'],
             'mandal' => ['required', 'string'],
             'pincode' => ['required', 'string'],
+            'address' => ['required', 'string'],
+            'designation' => ['required', 'array', 'min:1'],
+            'designation.*' => ['required', 'string', Rule::in($this->designations())],
+            'designation_other' => [Rule::requiredIf(fn (): bool => in_array('Others', (array) $request->input('designation'), true)), 'nullable', 'string', 'max:255'],
+            'nationality' => ['required', 'string', 'max:100'],
+            'crops_interested' => ['nullable', 'string', 'max:2000'],
+            'crop_interests' => ['nullable', $this->cropInterestsRule()],
         ]);
 
         $phone = $this->normalizePhone($data['phone']);
@@ -45,9 +54,14 @@ class AuthController extends Controller
             'district' => trim($data['district']),
             'mandal' => trim($data['mandal']),
             'pincode' => trim($data['pincode']),
+            'address' => trim($data['address']),
+            'designation' => $data['designation'],
+            'designation_other' => in_array('Others', $data['designation'], true) ? trim($data['designation_other']) : null,
+            'nationality' => trim($data['nationality']),
+            'crop_interests' => $this->normalizeCropInterests($data['crops_interested'] ?? $data['crop_interests'] ?? null),
         ]);
 
-        return response()->json(['message' => 'User registered successfully', 'user' => $this->publicUser($user)], 201);
+        return response()->json(['message' => 'User registered successfully', 'user' => $this->publicUser($user, true)], 201);
     }
 
     public function login(Request $request): JsonResponse
@@ -140,25 +154,49 @@ class AuthController extends Controller
             'firstName' => ['sometimes', 'required', 'string'],
             'lastName' => ['sometimes', 'required', 'string'],
             'email' => ['sometimes', 'nullable'],
+            'phone' => ['sometimes', 'required', 'string', 'regex:/^\+?[0-9\s().-]{7,20}$/'],
             'state' => ['sometimes', 'required', 'string'],
             'district' => ['sometimes', 'required', 'string'],
             'mandal' => ['sometimes', 'required', 'string'],
             'pincode' => ['sometimes', 'required', 'string'],
-            'crop_interests' => ['sometimes', 'array'],
-            'crop_interests.*' => ['string'],
+            'address' => ['sometimes', 'required', 'string'],
+            'designation' => ['sometimes', 'required', 'array', 'min:1'],
+            'designation.*' => ['required', 'string', Rule::in($this->designations())],
+            'designation_other' => [Rule::requiredIf(fn (): bool => in_array('Others', (array) $request->input('designation'), true)), 'nullable', 'string', 'max:255'],
+            'nationality' => ['sometimes', 'required', 'string', 'max:100'],
+            'crops_interested' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'crop_interests' => ['sometimes', 'nullable', $this->cropInterestsRule()],
         ]);
 
         $user = User::find($this->userId($request));
         if (!$user) return response()->json(['message' => 'User not found'], 404);
 
+        if (array_key_exists('phone', $data)) {
+            $phone = $this->normalizePhone($data['phone']);
+            if (User::where('phone', $phone)->where('id', '!=', $user->id)->exists()) {
+                return response()->json(['message' => 'Phone number already registered'], 409);
+            }
+            $data['phone'] = $phone;
+        }
+
         $updates = [];
-        foreach (['state', 'district', 'mandal', 'pincode'] as $field) {
+        foreach (['phone', 'state', 'district', 'mandal', 'pincode', 'address'] as $field) {
             if (array_key_exists($field, $data)) $updates[$field] = trim($data[$field]);
         }
         if (array_key_exists('firstName', $data)) $updates['first_name'] = trim($data['firstName']);
         if (array_key_exists('lastName', $data)) $updates['last_name'] = trim($data['lastName']);
         if (array_key_exists('email', $data)) $updates['email'] = $data['email'] === null ? null : trim($data['email']);
-        if (array_key_exists('crop_interests', $data)) $updates['crop_interests'] = array_values(array_map('trim', $data['crop_interests']));
+        if (array_key_exists('designation', $data)) {
+            $updates['designation'] = $data['designation'];
+            $updates['designation_other'] = in_array('Others', $data['designation'], true)
+                ? trim($data['designation_other'])
+                : null;
+        }
+        if (array_key_exists('designation_other', $data)) $updates['designation_other'] = trim($data['designation_other']);
+        if (array_key_exists('nationality', $data)) $updates['nationality'] = trim($data['nationality']);
+        if (array_key_exists('crops_interested', $data) || array_key_exists('crop_interests', $data)) {
+            $updates['crop_interests'] = $this->normalizeCropInterests($data['crops_interested'] ?? $data['crop_interests'] ?? null);
+        }
 
         $user->update($updates);
         return response()->json(['message' => 'Profile updated successfully', 'user' => $this->publicUser($user->fresh(), true)]);
@@ -215,6 +253,30 @@ class AuthController extends Controller
         return preg_replace('/\D+/', '', trim($phone));
     }
 
+    private function designations(): array
+    {
+        return ['Farmer', 'Student', 'Scientist', 'Teacher', 'Govt. Employee', 'Pvt. Employee', 'Company Owner', 'Others'];
+    }
+
+    private function normalizeCropInterests(array|string|null $cropInterests): array
+    {
+        if (is_string($cropInterests)) {
+            $cropInterests = preg_split('/[,\r\n]+/', $cropInterests) ?: [];
+        }
+
+        return array_values(array_filter(array_map(static fn ($crop): string => trim((string) $crop), $cropInterests ?? []), static fn (string $crop): bool => $crop !== ''));
+    }
+
+    private function cropInterestsRule(): \Closure
+    {
+        return static function (string $attribute, mixed $value, \Closure $fail): void {
+            if (is_string($value)) return;
+            if (!is_array($value) || collect($value)->contains(static fn ($crop): bool => !is_string($crop))) {
+                $fail('The '.$attribute.' field must be text or an array of text values.');
+            }
+        };
+    }
+
     private function subscriptionDetails(User $user): array
     {
         $subscription = Subscription::where('user_id', $user->id)
@@ -226,7 +288,7 @@ class AuthController extends Controller
         return [
             'active' => $subscription !== null,
             'plan_id' => $subscription
-                ? (string) (config('services.razorpay.plans.'.$subscription->plan_type.'.years') ?? ($subscription->plan_type === 'yearly' ? 1 : null))
+                ? (string) (config('services.razorpay.plans.'.$subscription->plan_type.'.years') ?? $subscription->plan_type)
                 : null,
             'expiry_date' => $subscription?->end_date,
         ];
@@ -234,23 +296,7 @@ class AuthController extends Controller
 
     private function availablePlans(): array
     {
-        $configuredPlans = config('services.razorpay.plans', []);
-        $baseYearlyPrice = (int) (($configuredPlans['1year']['amount'] ?? 0) / 100);
-
-        return collect($configuredPlans)
-            ->map(function (array $plan) use ($baseYearlyPrice): array {
-                $years = (int) $plan['years'];
-
-                return [
-                    'id' => (string) $years,
-                    'name' => $years.' '.($years === 1 ? 'Year' : 'Years'),
-                    'years' => $years,
-                    'price' => (int) ($plan['amount'] / 100),
-                    'base_yearly_price' => (int) $baseYearlyPrice,
-                ];
-            })
-            ->values()
-            ->all();
+        return app(MagazinePlanCatalog::class)->publicPlans();
     }
 
     private function shouldUseTestOtp(string $phone): bool
@@ -276,6 +322,10 @@ class AuthController extends Controller
             'first_name' => $user->first_name,
             'last_name' => $user->last_name,
             'phone' => $user->phone,
+            'address' => $user->address,
+            'designation' => $user->designation,
+            'designation_other' => $user->designation_other,
+            'nationality' => $user->nationality,
             'email' => $user->email,
             'state' => $user->state,
             'district' => $user->district,
@@ -284,7 +334,10 @@ class AuthController extends Controller
             'role' => $user->role,
         ];
 
-        if ($includeCropInterests) $data['crop_interests'] = $user->crop_interests ?? [];
+        if ($includeCropInterests) {
+            $data['crop_interests'] = $user->crop_interests ?? [];
+            $data['crops_interested'] = implode(', ', $user->crop_interests ?? []);
+        }
         return $data;
     }
     private function base64UrlEncode(string $value): string { return rtrim(strtr(base64_encode($value), '+/', '-_'), '='); }

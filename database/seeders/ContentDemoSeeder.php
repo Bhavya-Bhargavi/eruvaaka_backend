@@ -28,11 +28,15 @@ class ContentDemoSeeder extends Seeder
             'is_published' => true,
         ]);
 
-        ForumDiscussion::updateOrCreate(['slug' => 'demo-community-discussion'], [
-            'title' => 'Demo Community Discussion',
-            'body' => 'Temporary discussion for testing comments. Replace with client-approved forum content.',
-            'is_published' => true,
-        ]);
+        ForumDiscussion::where('slug', 'demo-community-discussion')->update(['is_published' => false]);
+
+        foreach ([1, 2] as $number) {
+            ForumDiscussion::updateOrCreate(['slug' => 'discussion-'.$number], [
+                'title' => 'Discussion'.$number,
+                'body' => 'Share your thoughts and participate in Discussion'.$number.'. Please keep comments relevant and respectful.',
+                'is_published' => true,
+            ]);
+        }
 
         Epaper::updateOrCreate(['slug' => 'demo-epaper'], [
             'title' => 'Eruvaaka E-Paper',

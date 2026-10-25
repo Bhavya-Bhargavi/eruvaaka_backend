@@ -23,7 +23,10 @@ class AuthPhoneOtpTest extends TestCase
             'district' => 'Bengaluru Urban',
             'mandal' => 'Yelahanka',
             'pincode' => '560064',
-            'crop_interests' => ['Rice', 'Cotton'],
+            'address' => '12 Green Street',
+            'designation' => ['Farmer'],
+            'nationality' => 'Indian',
+            'crops_interested' => 'Rice, Cotton',
         ];
 
         $this->postJson('/api/auth/register', $payload)->assertStatus(201);
@@ -45,12 +48,20 @@ class AuthPhoneOtpTest extends TestCase
             'district' => 'Bengaluru Urban',
             'mandal' => 'Yelahanka',
             'pincode' => '560064',
+            'address' => '12 Green Street',
+            'designation' => ['Farmer'],
+            'nationality' => 'Indian',
             'email' => 'not-an-email',
-            'crop_interests' => ['Rice', 'Cotton'],
+            'crops_interested' => 'Rice, Cotton',
         ]);
 
         $response->assertStatus(201)
             ->assertJsonPath('user.phone', '9876543211')
+            ->assertJsonPath('user.address', '12 Green Street')
+            ->assertJsonPath('user.designation', ['Farmer'])
+            ->assertJsonPath('user.nationality', 'Indian')
+            ->assertJsonPath('user.crop_interests', ['Rice', 'Cotton'])
+            ->assertJsonPath('user.crops_interested', 'Rice, Cotton')
             ->assertJsonPath('user.email', 'not-an-email');
     }
 
@@ -73,7 +84,10 @@ class AuthPhoneOtpTest extends TestCase
             'district' => 'Bengaluru Urban',
             'mandal' => 'Yelahanka',
             'pincode' => '560064',
-            'crop_interests' => ['Rice', 'Cotton'],
+            'address' => '12 Green Street',
+            'designation' => ['Farmer'],
+            'nationality' => 'Indian',
+            'crops_interested' => 'Rice, Cotton',
         ]);
 
         $registerResponse->assertStatus(201)
@@ -97,16 +111,92 @@ class AuthPhoneOtpTest extends TestCase
             ->assertJsonStructure([
                 'message',
                 'token',
-                'user' => ['id', 'first_name'],
+                'user' => ['id', 'first_name', 'designation', 'nationality'],
                 'subscription' => ['active', 'plan_id', 'expiry_date'],
-                'plans' => [['id', 'name', 'years', 'price', 'base_yearly_price']],
+                'plans' => [['id', 'key', 'name', 'type', 'price', 'currency', 'products']],
             ])
             ->assertJsonPath('subscription.active', false)
             ->assertJsonPath('subscription.plan_id', null)
             ->assertJsonPath('subscription.expiry_date', null)
-            ->assertJsonPath('plans.0', ['id' => '1', 'name' => '1 Year', 'years' => 1, 'price' => 100, 'base_yearly_price' => 100])
-            ->assertJsonPath('plans.1', ['id' => '3', 'name' => '3 Years', 'years' => 3, 'price' => 300, 'base_yearly_price' => 100])
-            ->assertJsonPath('plans.2', ['id' => '5', 'name' => '5 Years', 'years' => 5, 'price' => 500, 'base_yearly_price' => 100]);
+            ->assertJsonPath('plans.0.key', 'emagazine_monthly')
+            ->assertJsonPath('plans.0.price', 99)
+            ->assertJsonPath('plans.1.key', 'print_magazine_monthly')
+            ->assertJsonPath('plans.1.price', 299)
+            ->assertJsonPath('plans.2.key', 'combo_monthly')
+            ->assertJsonPath('plans.2.price', 349);
+    }
+
+    public function test_registration_requires_valid_designation_and_saves_other_details(): void
+    {
+        $payload = [
+            'firstName' => 'Test',
+            'lastName' => 'User',
+            'phone' => '9876543230',
+            'password' => 'Password1',
+            'state' => 'Karnataka',
+            'district' => 'Bengaluru Urban',
+            'mandal' => 'Yelahanka',
+            'pincode' => '560064',
+            'address' => '12 Green Street',
+            'nationality' => 'Indian',
+            'designation' => ['Farmer', 'Others'],
+        ];
+
+        $this->postJson('/api/auth/register', $payload)->assertUnprocessable();
+
+        $payload['designation_other'] = 'Agricultural Consultant';
+        $this->postJson('/api/auth/register', $payload)
+            ->assertCreated()
+            ->assertJsonPath('user.designation', ['Farmer', 'Others'])
+            ->assertJsonPath('user.designation_other', 'Agricultural Consultant')
+            ->assertJsonPath('user.nationality', 'Indian')
+            ->assertJsonPath('user.crop_interests', []);
+
+        $this->assertDatabaseHas('users', [
+            'phone' => '9876543230',
+            'designation' => '["Farmer","Others"]',
+            'designation_other' => 'Agricultural Consultant',
+            'nationality' => 'Indian',
+        ]);
+    }
+
+    public function test_profile_update_can_change_phone_and_address(): void
+    {
+        config(['services.otp.test_mode' => true]);
+        $this->postJson('/api/auth/register', [
+            'firstName' => 'Test',
+            'lastName' => 'User',
+            'phone' => '9876543220',
+            'password' => 'Password1',
+            'state' => 'Karnataka',
+            'district' => 'Bengaluru Urban',
+            'mandal' => 'Yelahanka',
+            'pincode' => '560064',
+            'address' => '12 Green Street',
+            'designation' => ['Farmer'],
+            'nationality' => 'Indian',
+        ])->assertCreated();
+
+        $this->postJson('/api/auth/login', ['phone' => '9876543220'])
+            ->assertOk()
+            ->assertJsonPath('message', 'Test OTP generated');
+        $user = User::where('phone', '9876543220')->firstOrFail();
+        $tokenResponse = $this->postJson('/api/auth/verify-otp', [
+            'phone' => '9876543220',
+            'otp' => $user->otp_code,
+        ])->assertOk();
+
+        $this->withToken($tokenResponse->json('token'))
+            ->postJson('/api/users/profile', [
+                'phone' => '+1 (987) 654-3221',
+                'address' => '45 New Road',
+            ])
+            ->assertOk()
+            ->assertJsonPath('user.phone', '19876543221')
+            ->assertJsonPath('user.address', '45 New Road');
+
+        $this->assertSame('19876543221', $user->fresh()->phone);
+        $this->assertSame('45 New Road', $user->fresh()->address);
     }
 
     public function test_verify_otp_returns_the_users_active_subscribed_plans(): void

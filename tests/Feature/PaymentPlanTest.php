@@ -24,9 +24,13 @@ class PaymentPlanTest extends TestCase
             ->assertStatus(200)
             ->json('token');
 
-        foreach (['1year', '3year', '5year', 'yearly'] as $plan) {
+        foreach (['1year', '3year', '5year', 'yearly', 'emagazine_monthly', 'print_magazine_monthly', 'combo_monthly'] as $plan) {
+            $payload = ['plan' => $plan];
+            if (in_array($plan, ['print_magazine_monthly', 'combo_monthly'], true)) {
+                $payload['shipping_address'] = '12 Green Street, Yelahanka, Bengaluru, Karnataka 560064, India';
+            }
             $this->withToken($token)
-                ->postJson('/api/create-order', ['plan' => $plan])
+                ->postJson('/api/create-order', $payload)
                 ->assertStatus(500)
                 ->assertJsonPath('message', 'Payment gateway is not configured');
         }
@@ -34,6 +38,31 @@ class PaymentPlanTest extends TestCase
         $this->withToken($token)
             ->postJson('/api/create-order', ['plan' => '2year'])
             ->assertStatus(422);
+    }
+
+    public function test_shipping_address_is_required_for_print_and_combo_orders_only(): void
+    {
+        config([
+            'services.razorpay.key_id' => '',
+            'services.razorpay.key_secret' => '',
+        ]);
+        $user = User::factory()->create(['phone' => '9876543218']);
+        $token = $this->tokenFor($user->id);
+
+        $this->withToken($token)
+            ->postJson('/api/create-order', ['plan' => 'print_magazine_monthly'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('shipping_address');
+
+        $this->withToken($token)
+            ->postJson('/api/create-order', ['plan' => 'combo_monthly'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('shipping_address');
+
+        $this->withToken($token)
+            ->postJson('/api/create-order', ['plan' => 'emagazine_monthly'])
+            ->assertStatus(500)
+            ->assertJsonPath('message', 'Payment gateway is not configured');
     }
 
     public function test_subscription_status_returns_content_guidance_for_inactive_user(): void
@@ -51,6 +80,16 @@ class PaymentPlanTest extends TestCase
             ->assertJsonPath('content_access.subscription_plans.visible', true)
             ->assertJsonPath('next_action', 'show_magazine_options')
             ->assertJsonCount(3, 'plans');
+
+        $this->withToken($token)
+            ->getJson('/api/subscription-status/'.$user->id)
+            ->assertJsonPath('plans.0.key', 'emagazine_monthly')
+            ->assertJsonPath('plans.0.name', 'E-Magazine Monthly')
+            ->assertJsonPath('plans.0.price', 99)
+            ->assertJsonPath('plans.1.key', 'print_magazine_monthly')
+            ->assertJsonPath('plans.1.price', 299)
+            ->assertJsonPath('plans.2.key', 'combo_monthly')
+            ->assertJsonPath('plans.2.price', 349);
     }
 
     public function test_subscription_status_returns_content_guidance_for_active_user(): void
@@ -73,6 +112,24 @@ class PaymentPlanTest extends TestCase
             ->assertJsonPath('content_access.print_magazine.accessible', true)
             ->assertJsonPath('content_access.subscription_plans.visible', false)
             ->assertJsonPath('next_action', 'open_emagazine_viewer');
+    }
+
+    public function test_print_magazine_plan_does_not_grant_emagazine_access(): void
+    {
+        $user = User::factory()->create(['phone' => '9876543217']);
+        Subscription::create([
+            'user_id' => $user->id,
+            'start_date' => now()->subDay(),
+            'end_date' => now()->addMonth(),
+            'plan_type' => 'print_magazine_monthly',
+            'status' => 'active',
+        ]);
+
+        $this->withToken($this->tokenFor($user->id))
+            ->getJson('/api/subscription-status/'.$user->id)
+            ->assertOk()
+            ->assertJsonPath('content_access.emagazine.accessible', false)
+            ->assertJsonPath('content_access.print_magazine.accessible', true);
     }
 
     private function tokenFor(int $userId): string

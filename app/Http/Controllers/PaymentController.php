@@ -2,10 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\CouponValidationRequest;
+use App\Http\Requests\CreatePaymentOrderRequest;
+use App\Models\CouponUsage;
 use App\Models\PaymentOrder;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Services\CouponService;
 use App\Services\InfinitoSmsService;
+use App\Services\MagazinePlanCatalog;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,15 +20,25 @@ use Razorpay\Api\Api;
 
 class PaymentController extends Controller
 {
-    public function createOrder(Request $request): JsonResponse
+    public function createOrder(CreatePaymentOrderRequest $request, CouponService $couponService, MagazinePlanCatalog $planCatalog): JsonResponse
     {
-        $data = $request->validate(['userId' => ['nullable', 'integer'], 'plan' => ['required', 'string', 'in:yearly,1year,3year,5year']]);
+        $data = $request->validated();
         $userId = $this->userId($request);
         if (isset($data['userId']) && (int) $data['userId'] !== $userId) return response()->json(['message' => 'You can only create an order for yourself'], 403);
-        $planType = $data['plan'] === 'yearly' ? '1year' : $data['plan'];
-        $plan = config('services.razorpay.plans.'.$planType);
-        if (!is_array($plan)) return response()->json(['message' => 'Unsupported plan'], 422);
-        $amountPaise = (int) $plan['amount'];
+        $planType = $planCatalog->normalizeKey($data['plan']);
+        $plan = $planCatalog->get($planType);
+        if (!$plan) return response()->json(['message' => 'Unsupported plan'], 422);
+        $originalAmountPaise = (int) $plan['amount'];
+        $amountPaise = $originalAmountPaise;
+        $coupon = null;
+        $discountPaise = 0;
+        if (!empty($data['coupon_code'])) {
+            $quote = $couponService->quote($data['coupon_code'], $userId, $amountPaise);
+            if (!$quote['valid']) return response()->json(['valid' => false, 'message' => $quote['message']], $quote['status']);
+            $coupon = $quote['coupon'];
+            $discountPaise = $quote['discount_amount'];
+            $amountPaise = $quote['final_amount'];
+        }
         $keyId = (string) config('services.razorpay.key_id');
         $keySecret = (string) config('services.razorpay.key_secret');
         if ($keyId === '' || $keySecret === '') return response()->json(['message' => 'Payment gateway is not configured'], 500);
@@ -41,8 +56,36 @@ class PaymentController extends Controller
             ]);
             return response()->json(['message' => 'Payment gateway request failed'], 502);
         }
-        PaymentOrder::create(['user_id' => $userId, 'razorpay_order_id' => $gateway['id'], 'amount' => $amountPaise, 'currency' => 'INR', 'receipt' => $receipt, 'plan_type' => $planType, 'status' => 'created']);
-        return response()->json(['message' => 'Payment order created', 'order_id' => $gateway['id'], 'payment_key' => $keyId, 'order' => ['id' => $gateway['id'], 'amount' => $amountPaise, 'currency' => 'INR', 'receipt' => $receipt, 'key_id' => $keyId]], 201);
+        PaymentOrder::create(['user_id' => $userId, 'razorpay_order_id' => $gateway['id'], 'amount' => $amountPaise, 'currency' => 'INR', 'receipt' => $receipt, 'plan_type' => $planType, 'shipping_address' => $data['shipping_address'] ?? null, 'status' => 'created', 'coupon_id' => $coupon?->id, 'discount_amount' => $discountPaise]);
+        return response()->json([
+            'message' => 'Payment order created',
+            'order_id' => $gateway['id'],
+            'payment_key' => $keyId,
+            'original_amount' => round($originalAmountPaise / 100, 2),
+            'discount' => round($discountPaise / 100, 2),
+            'final_amount' => round($amountPaise / 100, 2),
+            'currency' => 'INR',
+            'order' => ['id' => $gateway['id'], 'amount' => $amountPaise, 'currency' => 'INR', 'receipt' => $receipt, 'key_id' => $keyId],
+        ], 201);
+    }
+
+    public function validateCoupon(CouponValidationRequest $request, CouponService $couponService, MagazinePlanCatalog $planCatalog): JsonResponse
+    {
+        $data = $request->validated();
+        $planType = $planCatalog->normalizeKey($data['plan']);
+        $plan = $planCatalog->get($planType);
+        if (!$plan) return response()->json(['valid' => false, 'message' => 'Unsupported plan'], 422);
+
+        $quote = $couponService->quote($data['coupon_code'], $this->userId($request), (int) $plan['amount']);
+        if (!$quote['valid']) return response()->json(['valid' => false, 'message' => $quote['message']], $quote['status']);
+
+        return response()->json([
+            'valid' => true,
+            'original_amount' => round(((int) $plan['amount']) / 100, 2),
+            'discount' => round($quote['discount_amount'] / 100, 2),
+            'final_amount' => round($quote['final_amount'] / 100, 2),
+            'currency' => 'INR',
+        ]);
     }
 
     public function verifyPayment(Request $request): JsonResponse
@@ -61,17 +104,42 @@ class PaymentController extends Controller
         $order = PaymentOrder::where('razorpay_order_id', $data['order_id'])->where('user_id', $this->userId($request))->first();
         if (!$order) return response()->json(['message' => 'Payment order not found'], 404);
         if ($order->currency !== 'INR' || $order->status === 'paid') return response()->json(['message' => 'Payment order cannot be verified'], 409);
-        $planType = $order->plan_type === 'yearly' ? '1year' : $order->plan_type;
-        $plan = config('services.razorpay.plans.'.$planType);
-        if (!is_array($plan)) return response()->json(['message' => 'Payment order has an unsupported plan'], 409);
+        $planCatalog = app(MagazinePlanCatalog::class);
+        $planType = $planCatalog->normalizeKey($order->plan_type ?? '');
+        $plan = $planCatalog->get($planType);
+        if (!$plan) return response()->json(['message' => 'Payment order has an unsupported plan'], 409);
         try { (new Api((string) config('services.razorpay.key_id'), (string) config('services.razorpay.key_secret')))->utility->verifyPaymentSignature(['razorpay_order_id' => $data['order_id'], 'razorpay_payment_id' => $data['payment_id'], 'razorpay_signature' => $data['signature']]); }
         catch (\Throwable) { return response()->json(['success' => false, 'message' => 'Payment signature verification failed'], 400); }
-        DB::transaction(function () use ($order, $data, $plan, $planType): void {
+        DB::transaction(function () use ($order, $data, $plan, $planType, $planCatalog): void {
             $order->update(['razorpay_payment_id' => $data['payment_id'], 'signature' => $data['signature'], 'status' => 'paid']);
-            $start = Carbon::now();
-            $subscription = Subscription::where('user_id', $order->user_id)->latest('end_date')->first();
-            $start = $subscription && $subscription->end_date->isFuture() ? $subscription->end_date : $start;
-            Subscription::create(['user_id' => $order->user_id, 'start_date' => $start, 'end_date' => $start->copy()->addYears((int) $plan['years']), 'plan_type' => $planType, 'status' => 'active']);
+            if ($order->coupon_id) {
+                CouponUsage::firstOrCreate(
+                    ['coupon_id' => $order->coupon_id, 'user_id' => $order->user_id],
+                    ['payment_order_id' => $order->id, 'discount_amount' => $order->discount_amount, 'used_at' => now()]
+                );
+            }
+            $existingSubscriptions = Subscription::where('user_id', $order->user_id)
+                ->where('status', 'active')
+                ->get();
+            foreach ($planCatalog->productsFor($planType) as $product) {
+                $latestEntitlement = $existingSubscriptions
+                    ->filter(fn (Subscription $subscription): bool => in_array($product, $planCatalog->productsFor($subscription->plan_type), true))
+                    ->sortByDesc('end_date')
+                    ->first();
+                $start = $latestEntitlement && $latestEntitlement->end_date->isFuture()
+                    ? $latestEntitlement->end_date->copy()
+                    : Carbon::now();
+                $end = isset($plan['months'])
+                    ? $start->copy()->addMonths((int) $plan['months'])
+                    : $start->copy()->addYears((int) ($plan['years'] ?? 1));
+                Subscription::create([
+                    'user_id' => $order->user_id,
+                    'start_date' => $start,
+                    'end_date' => $end,
+                    'plan_type' => $planType,
+                    'status' => 'active',
+                ]);
+            }
             User::whereKey($order->user_id)->update(['subscription_status' => 'active']);
         });
         $user = User::find($order->user_id);
@@ -105,18 +173,29 @@ class PaymentController extends Controller
 
     private function subscriptionResponse(int $userId): array
     {
-        $currentSubscription = Subscription::where('user_id', $userId)->latest('end_date')->first();
-        $active = $currentSubscription?->status === 'active' && $currentSubscription->end_date->isFuture();
+        $planCatalog = app(MagazinePlanCatalog::class);
+        $subscriptions = Subscription::where('user_id', $userId)->get();
+        $currentSubscription = $subscriptions->sortByDesc('end_date')->first();
+        $productAccess = [];
+        foreach (['emagazine', 'print_magazine'] as $product) {
+            $productAccess[$product] = $subscriptions->contains(fn (Subscription $subscription): bool =>
+                $subscription->status === 'active'
+                && $subscription->end_date->isFuture()
+                && in_array($product, $planCatalog->productsFor($subscription->plan_type), true)
+            );
+        }
+        $active = in_array(true, $productAccess, true);
 
-        if (!$active && $currentSubscription?->status === 'active') {
-            $currentSubscription->update(['status' => 'expired']);
+        foreach ($subscriptions as $subscription) {
+            if ($subscription->status === 'active' && !$subscription->end_date->isFuture()) {
+                $subscription->update(['status' => 'expired']);
+            }
         }
 
         User::whereKey($userId)->update(['subscription_status' => $active ? 'active' : 'expired']);
 
-        $years = $currentSubscription
-            ? (config('services.razorpay.plans.'.$currentSubscription->plan_type.'.years') ?? ($currentSubscription->plan_type === 'yearly' ? 1 : null))
-            : null;
+        $currentPlan = $currentSubscription ? $planCatalog->get($currentSubscription->plan_type) : null;
+        $years = $currentPlan['years'] ?? null;
 
         return [
             'status' => $active ? 'active' : 'expired',
@@ -125,35 +204,22 @@ class PaymentController extends Controller
             'end_date' => $currentSubscription?->end_date,
             'subscription' => [
                 'active' => $active,
-                'plan_id' => $years === null ? null : (string) $years,
+                'plan_id' => $currentSubscription ? (string) ($years ?? $currentSubscription->plan_type) : null,
                 'expiry_date' => $active ? $currentSubscription->end_date : null,
             ],
             'content_access' => [
-                'emagazine' => ['visible' => true, 'accessible' => $active],
-                'print_magazine' => ['visible' => true, 'accessible' => $active],
+                'emagazine' => ['visible' => true, 'accessible' => $productAccess['emagazine']],
+                'print_magazine' => ['visible' => true, 'accessible' => $productAccess['print_magazine']],
                 'subscription_plans' => ['visible' => !$active],
             ],
-            'next_action' => $active ? 'open_emagazine_viewer' : 'show_magazine_options',
+            'next_action' => $productAccess['emagazine'] ? 'open_emagazine_viewer' : 'show_magazine_options',
             'plans' => $this->availablePlans(),
         ];
     }
 
     private function availablePlans(): array
     {
-        $plans = config('services.razorpay.plans', []);
-        $baseYearlyPrice = (int) (($plans['1year']['amount'] ?? 0) / 100);
-
-        return collect($plans)->map(function (array $plan) use ($baseYearlyPrice): array {
-            $years = (int) $plan['years'];
-
-            return [
-                'id' => (string) $years,
-                'name' => $years.' '.($years === 1 ? 'Year' : 'Years'),
-                'years' => $years,
-                'price' => (int) ($plan['amount'] / 100),
-                'base_yearly_price' => $baseYearlyPrice,
-            ];
-        })->values()->all();
+        return app(MagazinePlanCatalog::class)->publicPlans();
     }
 
     private function userId(Request $request): int { return (int) $request->attributes->get('jwt_claims')['id']; }
