@@ -3,11 +3,16 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContentController;
+use App\Http\Controllers\JobController;
 use App\Http\Controllers\NewsController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ProductController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('news', [NewsController::class, 'index']);
+Route::get('products', [ProductController::class, 'index']);
+Route::get('jobs', [JobController::class, 'index']);
+Route::get('jobs/{jobId}', [JobController::class, 'show'])->whereNumber('jobId');
 Route::post('contact', [ContactController::class, 'store']);
 Route::get('books', [ContentController::class, 'books']);
 Route::get('books/{bookId}', [ContentController::class, 'book']);
@@ -29,6 +34,7 @@ Route::prefix('auth')->group(function (): void {
 
 
 Route::middleware('legacy.auth')->group(function (): void {
+    Route::post('jobs', [JobController::class, 'store'])->middleware('throttle:10,1');
     Route::get('users/profile', [AuthController::class, 'profile']);
     Route::post('users/profile', [AuthController::class, 'updateProfile']);
     Route::post('users/updateProfile', [AuthController::class, 'updateProfile']);

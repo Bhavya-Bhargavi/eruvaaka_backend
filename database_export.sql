@@ -400,4 +400,53 @@ WHERE NOT EXISTS (
     WHERE `migration` = '2026_10_25_000004_add_shipping_address_to_payment_orders'
 );
 
+CREATE TABLE IF NOT EXISTS `agricultural_jobs` (
+    `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+    `title` varchar(255) NOT NULL,
+    `description` text NOT NULL,
+    `location` varchar(255) NOT NULL,
+    `salary` varchar(255) DEFAULT NULL,
+    `contact_person` varchar(255) NOT NULL,
+    `contact_phone` varchar(30) NOT NULL,
+    `status` varchar(30) NOT NULL DEFAULT 'active',
+    `created_at` timestamp NULL DEFAULT NULL,
+    `updated_at` timestamp NULL DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `agricultural_jobs_status_index` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `products` (
+    `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+    `source_id` varchar(255) NOT NULL,
+    `name` varchar(255) NOT NULL,
+    `slug` varchar(255) DEFAULT NULL,
+    `description` text DEFAULT NULL,
+    `permalink` text NOT NULL,
+    `price_minor` bigint unsigned DEFAULT NULL,
+    `currency_code` char(3) NOT NULL DEFAULT 'INR',
+    `currency_minor_unit` tinyint unsigned NOT NULL DEFAULT 2,
+    `image_url` text DEFAULT NULL,
+    `in_stock` tinyint(1) NOT NULL DEFAULT 0,
+    `created_at` timestamp NULL DEFAULT NULL,
+    `updated_at` timestamp NULL DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `products_source_id_unique` (`source_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `migrations` (`migration`, `batch`)
+SELECT '2026_10_26_000001_create_agricultural_jobs_table', COALESCE(MAX(`batch`), 0) + 1
+FROM `migrations`
+WHERE NOT EXISTS (
+    SELECT 1 FROM `migrations`
+    WHERE `migration` = '2026_10_26_000001_create_agricultural_jobs_table'
+);
+
+INSERT INTO `migrations` (`migration`, `batch`)
+SELECT '2026_10_26_000002_create_products_table', COALESCE(MAX(`batch`), 0) + 1
+FROM `migrations`
+WHERE NOT EXISTS (
+    SELECT 1 FROM `migrations`
+    WHERE `migration` = '2026_10_26_000002_create_products_table'
+);
+
 SET FOREIGN_KEY_CHECKS=1;

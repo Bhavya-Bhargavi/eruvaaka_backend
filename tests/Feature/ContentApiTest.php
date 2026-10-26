@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\Book;
+use App\Models\AgriculturalJob;
 use App\Models\Epaper;
 use App\Models\Emagazine;
 use App\Models\ForumComment;
 use App\Models\ForumDiscussion;
+use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -15,6 +17,99 @@ use Tests\TestCase;
 class ContentApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_products_api_lists_imported_mart_products(): void
+    {
+        Product::create([
+            'source_id' => '623',
+            'name' => 'Agricultural pump',
+            'slug' => 'agricultural-pump',
+            'description' => 'Water pump for farm use',
+            'permalink' => 'https://eruvaakamart.com/product/agricultural-pump/',
+            'price_minor' => 125000,
+            'currency_code' => 'INR',
+            'currency_minor_unit' => 2,
+            'image_url' => 'https://eruvaakamart.com/pump.jpg',
+            'in_stock' => true,
+        ]);
+
+        $this->getJson('/api/products')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Agricultural pump')
+            ->assertJsonPath('data.0.price_minor', 125000)
+            ->assertJsonPath('data.0.currency_code', 'INR')
+            ->assertJsonPath('data.0.in_stock', true)
+            ->assertJsonStructure(['data', 'links', 'meta']);
+    }
+
+    public function test_jobs_are_listed_and_details_are_limited_to_active_postings(): void
+    {
+        $activeJob = AgriculturalJob::create([
+            'title' => 'Farm supervisor',
+            'description' => 'Coordinate daily farm work',
+            'location' => 'Guntur',
+            'salary' => 'Rs. 25,000 per month',
+            'contact_person' => 'Farm Manager',
+            'contact_phone' => '9876543210',
+            'status' => 'active',
+        ]);
+        $inactiveJob = AgriculturalJob::create([
+            'title' => 'Closed position',
+            'description' => 'No longer accepting applications',
+            'location' => 'Vijayawada',
+            'contact_person' => 'Farm Manager',
+            'contact_phone' => '9876543210',
+            'status' => 'inactive',
+        ]);
+
+        $this->getJson('/api/jobs')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $activeJob->id)
+            ->assertJsonPath('data.0.title', 'Farm supervisor');
+
+        $this->getJson('/api/jobs/'.$activeJob->id)
+            ->assertOk()
+            ->assertJsonPath('data.contact_phone', '9876543210');
+
+        $this->getJson('/api/jobs/'.$inactiveJob->id)->assertNotFound();
+    }
+
+    public function test_job_creation_requires_authentication_and_validates_fields(): void
+    {
+        $jobData = [
+            'title' => 'Tractor operator',
+            'description' => 'Operate and maintain farm equipment',
+            'location' => 'Tenali',
+            'salary' => 'Negotiable',
+            'contact_person' => 'Hiring Manager',
+            'contact_phone' => '9876543211',
+        ];
+
+        $this->postJson('/api/jobs', $jobData)->assertUnauthorized();
+
+        $user = User::create([
+            'first_name' => 'Job',
+            'last_name' => 'Admin',
+            'phone' => '9876543212',
+            'password_hash' => 'unused',
+            'state' => 'State',
+            'district' => 'District',
+            'mandal' => 'Mandal',
+            'pincode' => '123456',
+        ]);
+
+        $this->withToken($this->tokenFor($user->id))
+            ->postJson('/api/jobs', $jobData)
+            ->assertCreated()
+            ->assertJsonPath('data.title', 'Tractor operator')
+            ->assertJsonPath('data.status', 'active');
+
+        $this->withToken($this->tokenFor($user->id))
+            ->postJson('/api/jobs', ['title' => 'Missing required fields'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['description', 'location', 'contact_person', 'contact_phone']);
+    }
 
     public function test_books_can_be_read_but_have_no_download_endpoint(): void
     {

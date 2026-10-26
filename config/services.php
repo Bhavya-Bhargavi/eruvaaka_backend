@@ -37,6 +37,10 @@ return [
         ],
     ],
 
+    'eruvaaka_mart' => [
+        'products_url' => env('ERUVAAKA_MART_PRODUCTS_URL', 'https://eruvaakamart.com/wp-json/wc/store/v1/products'),
+    ],
+
     'eruvaaka' => [
         'rss_url' => env('ERUVAAKA_RSS_URL', 'https://eruvaaka.com/feed/'),
         'wp_api_posts_url' => env('ERUVAAKA_WP_API_POSTS_URL', 'https://eruvaaka.com/wp-json/wp/v2/posts'),
