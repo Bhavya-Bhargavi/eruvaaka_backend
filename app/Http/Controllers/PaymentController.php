@@ -72,8 +72,7 @@ class PaymentController extends Controller
     public function validateCoupon(CouponValidationRequest $request, CouponService $couponService, MagazinePlanCatalog $planCatalog): JsonResponse
     {
         $data = $request->validated();
-        $planType = $planCatalog->normalizeKey($data['plan']);
-        $plan = $planCatalog->get($planType);
+        $plan = $planCatalog->get($data['plan']);
         if (!$plan) return response()->json(['valid' => false, 'message' => 'Unsupported plan'], 422);
 
         $quote = $couponService->quote($data['coupon_code'], $this->userId($request), (int) $plan['amount']);

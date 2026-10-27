@@ -13,7 +13,30 @@ class MagazinePlanCatalog
     {
         $plan = config('services.razorpay.plans.'.$this->normalizeKey($key));
 
-        return is_array($plan) ? $plan : null;
+        if (is_array($plan)) {
+            return $plan;
+        }
+
+        if (!preg_match('/^(emagazine|print_magazine|combo)_(1year|3year|5year)$/', $key, $matches)) {
+            return null;
+        }
+
+        $durationPlan = config('services.razorpay.plans.'.$matches[2]);
+        if (!is_array($durationPlan)) {
+            return null;
+        }
+
+        $products = match ($matches[1]) {
+            'emagazine' => ['emagazine'],
+            'print_magazine' => ['print_magazine'],
+            default => ['emagazine', 'print_magazine'],
+        };
+
+        return array_merge($durationPlan, [
+            'name' => ucfirst(str_replace('_', ' ', $matches[1])).' '.$durationPlan['name'],
+            'type' => $matches[1],
+            'products' => $products,
+        ]);
     }
 
     public function productsFor(string $planKey): array

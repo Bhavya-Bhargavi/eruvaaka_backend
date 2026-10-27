@@ -24,9 +24,16 @@ class PaymentPlanTest extends TestCase
             ->assertStatus(200)
             ->json('token');
 
-        foreach (['1year', '3year', '5year', 'yearly', 'emagazine_monthly', 'print_magazine_monthly', 'combo_monthly'] as $plan) {
+        $plans = [
+            '1year', '3year', '5year', 'yearly',
+            'emagazine_monthly', 'print_magazine_monthly', 'combo_monthly',
+            'emagazine_1year', 'emagazine_3year', 'emagazine_5year',
+            'print_magazine_1year', 'print_magazine_3year', 'print_magazine_5year',
+            'combo_1year', 'combo_3year', 'combo_5year',
+        ];
+        foreach ($plans as $plan) {
             $payload = ['plan' => $plan];
-            if (in_array($plan, ['print_magazine_monthly', 'combo_monthly'], true)) {
+            if (str_starts_with($plan, 'print_magazine') || str_starts_with($plan, 'combo')) {
                 $payload['shipping_address'] = '12 Green Street, Yelahanka, Bengaluru, Karnataka 560064, India';
             }
             $this->withToken($token)

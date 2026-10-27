@@ -15,6 +15,10 @@ class CouponService
             return $this->invalid('This coupon code is invalid or inactive');
         }
 
+        if ($coupon->starts_at && $coupon->starts_at->toDateString() > Carbon::today()->toDateString()) {
+            return $this->invalid('This coupon code is not active yet');
+        }
+
         if ($coupon->expires_at && $coupon->expires_at->toDateString() < Carbon::today()->toDateString()) {
             return $this->invalid('This coupon code has expired');
         }

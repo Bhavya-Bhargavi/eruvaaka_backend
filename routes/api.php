@@ -5,12 +5,14 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContentController;
 use App\Http\Controllers\JobController;
 use App\Http\Controllers\NewsController;
+use App\Http\Controllers\OfferController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProductController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('news', [NewsController::class, 'index']);
 Route::get('products', [ProductController::class, 'index']);
+Route::get('offers/active', [OfferController::class, 'active']);
 Route::get('jobs', [JobController::class, 'index']);
 Route::get('jobs/{jobId}', [JobController::class, 'show'])->whereNumber('jobId');
 Route::post('contact', [ContactController::class, 'store']);

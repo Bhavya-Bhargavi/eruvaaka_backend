@@ -34,6 +34,8 @@ The existing paths and JSON contracts are preserved:
 - `DELETE /api/users/bookmarks/{article_slug}`
 - `POST /api/payments/order`
 - `POST /api/payments/verify`
+- `GET /api/offers/active` (returns currently active popup offers, including coupon code and eligible plans)
+- `POST /api/coupon/validate` (authenticated coupon quote; coupon usage is enforced per user)
 - `GET /api/books`, `GET /api/books/{bookId}` (read only; no book download route)
 - `GET /api/forums`, `GET /api/forums/{forumId}`, `GET /api/forums/{forumId}/comments`
 - `POST /api/forums/{forumId}/comments` (authenticated; 10 posts per minute)

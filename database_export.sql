@@ -289,6 +289,66 @@ CREATE TABLE IF NOT EXISTS `coupons` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET @column_exists := (
+    SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'coupons' AND column_name = 'starts_at'
+);
+SET @sql := IF(@column_exists = 0, 'ALTER TABLE `coupons` ADD COLUMN `starts_at` date DEFAULT NULL AFTER `is_active`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @column_exists := (
+    SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'coupons' AND column_name = 'offer_title'
+);
+SET @sql := IF(@column_exists = 0, 'ALTER TABLE `coupons` ADD COLUMN `offer_title` varchar(150) DEFAULT NULL AFTER `usage_limit`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @column_exists := (
+    SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'coupons' AND column_name = 'offer_message'
+);
+SET @sql := IF(@column_exists = 0, 'ALTER TABLE `coupons` ADD COLUMN `offer_message` text DEFAULT NULL AFTER `offer_title`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @column_exists := (
+    SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'coupons' AND column_name = 'eligible_plans'
+);
+SET @sql := IF(@column_exists = 0, 'ALTER TABLE `coupons` ADD COLUMN `eligible_plans` json DEFAULT NULL AFTER `offer_message`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+INSERT INTO `coupons` (`code`, `discount_type`, `discount_value`, `is_active`, `expires_at`, `usage_limit`, `created_at`, `updated_at`)
+VALUES ('POSTMAN_TEST', 'percentage', 1.00, 1, NULL, 10, NOW(), NOW())
+ON DUPLICATE KEY UPDATE
+    `discount_type` = VALUES(`discount_type`),
+    `discount_value` = VALUES(`discount_value`),
+    `is_active` = VALUES(`is_active`),
+    `expires_at` = VALUES(`expires_at`),
+    `usage_limit` = VALUES(`usage_limit`),
+    `updated_at` = NOW();
+
+INSERT INTO `coupons` (`code`, `discount_type`, `discount_value`, `is_active`, `starts_at`, `expires_at`, `usage_limit`, `offer_title`, `offer_message`, `eligible_plans`, `created_at`, `updated_at`)
+VALUES ('DIWALI2026', 'percentage', 10.00, 1, '2026-10-27', '2026-11-15', NULL, 'Diwali Special', 'Celebrate Diwali with 10% off your magazine plan.', '["emagazine_1year","emagazine_3year","emagazine_5year","print_magazine_1year","print_magazine_3year","print_magazine_5year","combo_1year","combo_3year","combo_5year"]', NOW(), NOW())
+ON DUPLICATE KEY UPDATE
+    `discount_type` = VALUES(`discount_type`),
+    `discount_value` = VALUES(`discount_value`),
+    `is_active` = VALUES(`is_active`),
+    `starts_at` = VALUES(`starts_at`),
+    `expires_at` = VALUES(`expires_at`),
+    `usage_limit` = VALUES(`usage_limit`),
+    `offer_title` = VALUES(`offer_title`),
+    `offer_message` = VALUES(`offer_message`),
+    `eligible_plans` = VALUES(`eligible_plans`),
+    `updated_at` = NOW();
+
+SET @column_exists := (
     SELECT COUNT(*)
     FROM information_schema.columns
     WHERE table_schema = DATABASE()
@@ -398,6 +458,22 @@ FROM `migrations`
 WHERE NOT EXISTS (
     SELECT 1 FROM `migrations`
     WHERE `migration` = '2026_10_25_000004_add_shipping_address_to_payment_orders'
+);
+
+INSERT INTO `migrations` (`migration`, `batch`)
+SELECT '2026_10_27_000001_add_festival_offer_fields_and_diwali_coupon', COALESCE(MAX(`batch`), 0) + 1
+FROM `migrations`
+WHERE NOT EXISTS (
+    SELECT 1 FROM `migrations`
+    WHERE `migration` = '2026_10_27_000001_add_festival_offer_fields_and_diwali_coupon'
+);
+
+INSERT INTO `migrations` (`migration`, `batch`)
+SELECT '2026_10_27_000002_add_eligible_plans_to_coupons', COALESCE(MAX(`batch`), 0) + 1
+FROM `migrations`
+WHERE NOT EXISTS (
+    SELECT 1 FROM `migrations`
+    WHERE `migration` = '2026_10_27_000002_add_eligible_plans_to_coupons'
 );
 
 CREATE TABLE IF NOT EXISTS `agricultural_jobs` (

@@ -15,7 +15,7 @@ class CouponValidationRequest extends FormRequest
     {
         return [
             'coupon_code' => ['required', 'string', 'max:100'],
-            'plan' => ['required', 'string', 'in:yearly,1year,3year,5year,emagazine_monthly,print_magazine_monthly,combo_monthly'],
+            'plan' => ['required', 'string', 'in:emagazine_1year,emagazine_3year,emagazine_5year,print_magazine_1year,print_magazine_3year,print_magazine_5year,combo_1year,combo_3year,combo_5year'],
         ];
     }
 }

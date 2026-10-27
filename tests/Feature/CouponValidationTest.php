@@ -85,7 +85,11 @@ class CouponValidationTest extends TestCase
 
     public function test_coupon_validation_uses_selected_magazine_plan_price(): void
     {
-        config(['services.razorpay.plans.emagazine_monthly.amount' => 9900]);
+        config([
+            'services.razorpay.plans.1year.amount' => 9900,
+            'services.razorpay.plans.3year.amount' => 20000,
+            'services.razorpay.plans.5year.amount' => 30000,
+        ]);
         $coupon = Coupon::create([
             'code' => 'EMAG10',
             'discount_type' => 'percentage',
@@ -94,19 +98,23 @@ class CouponValidationTest extends TestCase
         ]);
         $user = User::factory()->create();
 
-        $this->withToken($this->tokenFor($user->id))
-            ->postJson('/api/coupon/validate', [
-                'coupon_code' => $coupon->code,
-                'plan' => 'emagazine_monthly',
-            ])
-            ->assertOk()
-            ->assertExactJson([
-                'valid' => true,
-                'original_amount' => 99,
-                'discount' => 9.9,
-                'final_amount' => 89.1,
-                'currency' => 'INR',
-            ]);
+        foreach (['emagazine', 'print_magazine', 'combo'] as $product) {
+            foreach ([1 => 99, 3 => 200, 5 => 300] as $years => $amount) {
+                $this->withToken($this->tokenFor($user->id))
+                    ->postJson('/api/coupon/validate', [
+                        'coupon_code' => $coupon->code,
+                        'plan' => $product.'_'.$years.'year',
+                    ])
+                    ->assertOk()
+                    ->assertExactJson([
+                        'valid' => true,
+                        'original_amount' => $amount,
+                        'discount' => $amount * 0.1,
+                        'final_amount' => $amount * 0.9,
+                        'currency' => 'INR',
+                    ]);
+            }
+        }
     }
 
     private function tokenFor(int $userId): string
