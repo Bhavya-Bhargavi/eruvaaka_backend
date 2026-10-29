@@ -89,7 +89,8 @@ class NewsController extends Controller
                 ->timeout(10)
                 ->get((string) config('services.eruvaaka.wp_api_posts_url'), [
                     'per_page' => 100,
-                    '_fields' => 'link,featured_media',
+                    '_embed' => 'wp:featuredmedia',
+                    '_fields' => 'link,_embedded',
                 ])
                 ->throw()
                 ->json();
@@ -103,52 +104,18 @@ class NewsController extends Controller
             return [];
         }
 
-        $postsByMediaId = [];
+        $images = [];
         foreach ($posts as $post) {
             $link = $post['link'] ?? null;
-            $mediaId = $post['featured_media'] ?? null;
-
-            if (is_string($link) && is_numeric($mediaId) && (int) $mediaId > 0) {
-                $postsByMediaId[(int) $mediaId] = $this->normalizeArticleUrl($link);
-            }
-        }
-
-        if ($postsByMediaId === []) {
-            return [];
-        }
-
-        try {
-            $mediaItems = Http::acceptJson()
-                ->connectTimeout(5)
-                ->timeout(10)
-                ->get((string) config('services.eruvaaka.wp_api_media_url'), [
-                    'include' => array_keys($postsByMediaId),
-                    'per_page' => 100,
-                    '_fields' => 'id,source_url,media_details',
-                ])
-                ->throw()
-                ->json();
-        } catch (Throwable $exception) {
-            report($exception);
-
-            return [];
-        }
-
-        if (!is_array($mediaItems)) {
-            return [];
-        }
-
-        $images = [];
-        foreach ($mediaItems as $media) {
-            $mediaId = $media['id'] ?? null;
+            $media = $post['_embedded']['wp:featuredmedia'][0] ?? [];
             $sizes = $media['media_details']['sizes'] ?? [];
             $thumbnail = $sizes['tnm-m-2_1']['source_url']
                 ?? $sizes['medium_large']['source_url']
                 ?? $media['source_url']
                 ?? null;
 
-            if (is_numeric($mediaId) && isset($postsByMediaId[(int) $mediaId]) && is_string($thumbnail) && $thumbnail !== '') {
-                $images[$postsByMediaId[(int) $mediaId]] = $thumbnail;
+            if (is_string($link) && is_string($thumbnail) && $thumbnail !== '') {
+                $images[$this->normalizeArticleUrl($link)] = $thumbnail;
             }
         }
 

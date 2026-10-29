@@ -10,6 +10,7 @@ use App\Services\InfinitoSmsService;
 use App\Services\MagazinePlanCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -29,7 +30,7 @@ class AuthController extends Controller
             'mandal' => ['required', 'string'],
             'pincode' => ['required', 'string'],
             'address' => ['required', 'string'],
-            'designation' => ['required', 'array', 'min:1'],
+            'designation' => ['required', 'array', 'size:1'],
             'designation.*' => ['required', 'string', Rule::in($this->designations())],
             'designation_other' => [Rule::requiredIf(fn (): bool => in_array('Others', (array) $request->input('designation'), true)), 'nullable', 'string', 'max:255'],
             'nationality' => ['required', 'string', 'max:100'],
@@ -82,25 +83,13 @@ class AuthController extends Controller
             return response()->json(['message' => 'OTP SMS provider is not configured'], 503);
         }
 
-        $otp = (string) random_int(100000, 999999);
-        $user->update([
-            'otp_code' => $otp,
-            'otp_expires_at' => now()->addMinutes((int) config('services.otp.expiry_minutes', 5)),
-        ]);
+        $otp = $this->createOrReuseOtp($user);
 
         if ($testOtp) {
             return response()->json(['message' => 'Test OTP generated', 'otp' => $otp]);
         }
 
-        try {
-            app(InfinitoSmsService::class)->sendOtp($user->phone, $otp);
-        } catch (\InvalidArgumentException $exception) {
-            report($exception);
-            return response()->json(['message' => 'OTP SMS provider is not configured'], 503);
-        } catch (\Throwable $exception) {
-            report($exception);
-            return response()->json(['message' => 'OTP delivery failed'], 502);
-        }
+        $this->scheduleOtpSms($user);
 
         return response()->json(['message' => 'OTP sent successfully']);
     }
@@ -160,7 +149,7 @@ class AuthController extends Controller
             'mandal' => ['sometimes', 'required', 'string'],
             'pincode' => ['sometimes', 'required', 'string'],
             'address' => ['sometimes', 'required', 'string'],
-            'designation' => ['sometimes', 'required', 'array', 'min:1'],
+            'designation' => ['sometimes', 'required', 'array', 'size:1'],
             'designation.*' => ['required', 'string', Rule::in($this->designations())],
             'designation_other' => [Rule::requiredIf(fn (): bool => in_array('Others', (array) $request->input('designation'), true)), 'nullable', 'string', 'max:255'],
             'nationality' => ['sometimes', 'required', 'string', 'max:100'],
@@ -218,25 +207,13 @@ class AuthController extends Controller
             return response()->json(['message' => 'OTP SMS provider is not configured'], 503);
         }
 
-        $otp = (string) random_int(100000, 999999);
-        $user->update([
-            'otp_code' => $otp,
-            'otp_expires_at' => now()->addMinutes((int) config('services.otp.expiry_minutes', 5)),
-        ]);
+        $otp = $this->createOrReuseOtp($user);
 
         if ($testOtp) {
             return response()->json(['message' => 'Test OTP generated', 'otp' => $otp]);
         }
 
-        try {
-            app(InfinitoSmsService::class)->sendOtp($user->phone, $otp);
-        } catch (\InvalidArgumentException $exception) {
-            report($exception);
-            return response()->json(['message' => 'OTP SMS provider is not configured'], 503);
-        } catch (\Throwable $exception) {
-            report($exception);
-            return response()->json(['message' => 'OTP delivery failed'], 502);
-        }
+        $this->scheduleOtpSms($user);
 
         return response()->json(['message' => 'OTP resent successfully']);
     }
@@ -287,10 +264,16 @@ class AuthController extends Controller
 
         return [
             'active' => $subscription !== null,
+            'is_subscribed' => $subscription !== null,
             'plan_id' => $subscription
                 ? (string) (config('services.razorpay.plans.'.$subscription->plan_type.'.years') ?? $subscription->plan_type)
                 : null,
             'expiry_date' => $subscription?->end_date,
+            'days_remaining' => $subscription
+                ? (int) now()->startOfDay()->diffInDays($subscription->end_date->copy()->startOfDay())
+                : null,
+            'show_expiry_notification' => $subscription !== null
+                && now()->startOfDay()->diffInDays($subscription->end_date->copy()->startOfDay()) <= 60,
         ];
     }
 
@@ -313,6 +296,42 @@ class AuthController extends Controller
         if (!$configuredPhones) return true;
 
         return in_array($this->normalizePhone($phone), array_map([$this, 'normalizePhone'], $configuredPhones), true);
+    }
+
+    private function createOrReuseOtp(User $user): string
+    {
+        $otp = $user->otp_code && $user->otp_expires_at?->isFuture()
+            ? (string) $user->otp_code
+            : (string) random_int(100000, 999999);
+
+        $user->update([
+            'otp_code' => $otp,
+            'otp_expires_at' => now()->addMinutes((int) config('services.otp.expiry_minutes', 5)),
+        ]);
+
+        return $otp;
+    }
+
+    private function scheduleOtpSms(User $user): void
+    {
+        $cacheKey = 'otp-sms-cooldown:'.hash('sha256', $user->phone);
+        if (!Cache::add($cacheKey, true, now()->addSeconds(30))) {
+            return;
+        }
+
+        $userId = (int) $user->getKey();
+        defer(function () use ($userId): void {
+            $user = User::find($userId);
+            if (!$user || !$user->otp_code || !$user->otp_expires_at?->isFuture()) {
+                return;
+            }
+
+            try {
+                app(InfinitoSmsService::class)->sendOtp($user->phone, (string) $user->otp_code);
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        });
     }
 
     private function userId(Request $request): int { return (int) $request->attributes->get('jwt_claims')['id']; }

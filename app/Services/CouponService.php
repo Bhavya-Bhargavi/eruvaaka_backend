@@ -7,12 +7,21 @@ use Illuminate\Support\Carbon;
 
 class CouponService
 {
-    public function quote(string $code, int $userId, int $amountPaise): array
+    public function quote(string $code, int $userId, int $amountPaise, ?string $plan = null): array
     {
         $coupon = Coupon::query()->whereRaw('UPPER(code) = ?', [strtoupper(trim($code))])->first();
 
         if (!$coupon || !$coupon->is_active) {
             return $this->invalid('This coupon code is invalid or inactive');
+        }
+
+        if ($coupon->is_test && (!(bool) config('services.razorpay.test_mode', false)
+            || !str_starts_with((string) config('services.razorpay.key_id', ''), 'rzp_test_'))) {
+            return $this->invalid('This test coupon requires Razorpay test credentials');
+        }
+
+        if ($coupon->eligible_plans && $plan !== null && !in_array($plan, $coupon->eligible_plans, true)) {
+            return $this->invalid('This coupon code is not valid for the selected plan');
         }
 
         if ($coupon->starts_at && $coupon->starts_at->toDateString() > Carbon::today()->toDateString()) {

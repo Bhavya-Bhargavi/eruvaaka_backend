@@ -1,0 +1,118 @@
+{
+  "info": {
+    "name": "Eruvaaka Subscription and Coupon Local Tests",
+    "description": "Focused local checks for subscription expiry status and Razorpay test-only coupons. Prerequisites: apply database_export.sql, set RAZORPAY_TEST_MODE=true, RAZORPAY_TEST_AMOUNT=2, and Razorpay rzp_test_ credentials in .env. Start the API locally. Set token and user_id below from a verified account. SAVE50 should quote INR 1 off an INR 2 plan (INR 1 final); SAVE25 should quote INR 0.50 off (INR 1.50 final).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000" },
+    { "key": "token", "value": "" },
+    { "key": "user_id", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Subscription Status",
+      "event": [{
+        "listen": "test",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            "const response = pm.response.json();",
+            "pm.test('Subscription status request succeeds', function () { pm.response.to.have.status(200); });",
+            "pm.test('New expiry fields are present', function () { pm.expect(response.is_subscribed).to.be.a('boolean'); pm.expect(response).to.have.property('expiry_date'); pm.expect(response).to.have.property('days_remaining'); pm.expect(response.show_expiry_notification).to.be.a('boolean'); });",
+            "if (response.is_subscribed && response.days_remaining <= 60) { pm.test('Expiry notification window is active', function () { pm.expect(response.show_expiry_notification).to.eql(true); }); }"
+          ]
+        }
+      }],
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/subscription-status/{{user_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "subscription-status", "{{user_id}}"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Validate SAVE50",
+      "event": [{
+        "listen": "test",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            "const response = pm.response.json();",
+            "pm.test('SAVE50 quote succeeds', function () { pm.response.to.have.status(200); pm.expect(response.valid).to.eql(true); });",
+            "pm.test('SAVE50 is 50 percent off INR 2 test pricing', function () { pm.expect(response.original_amount).to.eql(2); pm.expect(response.discount).to.eql(1); pm.expect(response.final_amount).to.eql(1); });"
+          ]
+        }
+      }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"coupon_code\": \"SAVE50\",\n  \"plan\": \"1year\"\n}" },
+        "url": {
+          "raw": "{{base_url}}/api/coupon/validate",
+          "host": ["{{base_url}}"],
+          "path": ["api", "coupon", "validate"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Validate SAVE25",
+      "event": [{
+        "listen": "test",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            "const response = pm.response.json();",
+            "pm.test('SAVE25 quote succeeds', function () { pm.response.to.have.status(200); pm.expect(response.valid).to.eql(true); });",
+            "pm.test('SAVE25 is 25 percent off INR 2 test pricing', function () { pm.expect(response.original_amount).to.eql(2); pm.expect(response.discount).to.eql(0.5); pm.expect(response.final_amount).to.eql(1.5); });"
+          ]
+        }
+      }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"coupon_code\": \"SAVE25\",\n  \"plan\": \"1year\"\n}" },
+        "url": {
+          "raw": "{{base_url}}/api/coupon/validate",
+          "host": ["{{base_url}}"],
+          "path": ["api", "coupon", "validate"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Razorpay Test Order with SAVE50",
+      "event": [{
+        "listen": "test",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            "const response = pm.response.json();",
+            "pm.test('Test order created', function () { pm.response.to.have.status(201); });",
+            "pm.test('Order amount is INR 1 after SAVE50', function () { pm.expect(response.original_amount).to.eql(2); pm.expect(response.discount).to.eql(1); pm.expect(response.final_amount).to.eql(1); pm.expect(response.order.amount).to.eql(100); });",
+            "if (response.order_id) { pm.collectionVariables.set('order_id', response.order_id); }"
+          ]
+        }
+      }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"plan\": \"1year\",\n  \"coupon_code\": \"SAVE50\"\n}" },
+        "url": {
+          "raw": "{{base_url}}/api/create-order",
+          "host": ["{{base_url}}"],
+          "path": ["api", "create-order"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

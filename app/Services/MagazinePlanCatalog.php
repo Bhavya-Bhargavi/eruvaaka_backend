@@ -50,6 +50,22 @@ class MagazinePlanCatalog
         return in_array($planKey, ['emagazine', 'print_magazine'], true) ? [$planKey] : [];
     }
 
+    public function amountFor(array $plan): ?int
+    {
+        if (!(bool) config('services.razorpay.test_mode', false)) {
+            return (int) ($plan['amount'] ?? 0);
+        }
+
+        $keyId = (string) config('services.razorpay.key_id', '');
+        $testAmount = (int) config('services.razorpay.test_amount', 200);
+
+        if (!str_starts_with($keyId, 'rzp_test_') || $testAmount < 100) {
+            return null;
+        }
+
+        return $testAmount;
+    }
+
     public function entitlementPlanFor(string $product): string
     {
         return (string) config('services.razorpay.entitlement_plans.'.$product, $product);
@@ -67,7 +83,7 @@ class MagazinePlanCatalog
                     'key' => $key,
                     'name' => $plan['name'] ?? $key,
                     'type' => $plan['type'] ?? 'subscription',
-                    'price' => (int) ($plan['amount'] / 100),
+                    'price' => (int) (($this->amountFor($plan) ?? (int) $plan['amount']) / 100),
                     'currency' => 'INR',
                     'products' => $plan['products'] ?? [],
                 ];

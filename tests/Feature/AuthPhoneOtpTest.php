@@ -142,8 +142,11 @@ class AuthPhoneOtpTest extends TestCase
             'designation' => ['Farmer', 'Others'],
         ];
 
-        $this->postJson('/api/auth/register', $payload)->assertUnprocessable();
+        $this->postJson('/api/auth/register', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('designation');
 
+        $payload['designation'] = ['Others'];
         $payload['designation_other'] = 'Agricultural Consultant';
         $this->postJson('/api/auth/register', $payload)
             ->assertCreated()
@@ -291,11 +294,19 @@ class AuthPhoneOtpTest extends TestCase
             'statuscode' => 200,
             'messageack' => ['guids' => [['guid' => 'test-guid', 'errors' => []]]],
         ], 200)]);
-        User::factory()->create(['phone' => '9876543215']);
+        $user = User::factory()->create(['phone' => '9876543215']);
 
         $this->postJson('/api/auth/login', ['phone' => '9876543215'])
             ->assertOk()
             ->assertJsonPath('message', 'OTP sent successfully');
+
+        $firstOtp = $user->fresh()->otp_code;
+        $this->postJson('/api/auth/login', ['phone' => '9876543215'])
+            ->assertOk()
+            ->assertJsonPath('message', 'OTP sent successfully');
+
+        $this->assertSame($firstOtp, $user->fresh()->otp_code);
+        Http::assertSentCount(1);
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://sms.example.test/unified/v2/send'
             && ($request->data()['sms']['messages'][0]['addresses'][0]['to'] ?? null) === '919876543215');

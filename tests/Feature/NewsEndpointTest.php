@@ -37,18 +37,17 @@ class NewsEndpointTest extends TestCase
                 XML),
             'eruvaaka.com/wp-json/wp/v2/posts*' => Http::response([[
                 'link' => 'https://eruvaaka.com/test-news/',
-                'featured_media' => 37966,
-            ]]),
-            'eruvaaka.com/wp-json/wp/v2/media*' => Http::response([[
-                'id' => 37966,
-                'media_details' => [
-                    'sizes' => [
-                        'tnm-m-2_1' => [
-                            'source_url' => 'https://eruvaaka.com/wp-content/uploads/test-news-680x400.jpg',
+                '_embedded' => [
+                    'wp:featuredmedia' => [[
+                        'media_details' => [
+                            'sizes' => [
+                                'tnm-m-2_1' => [
+                                    'source_url' => 'https://eruvaaka.com/wp-content/uploads/test-news-680x400.jpg',
+                                ],
+                            ],
                         ],
-                    ],
+                    ]],
                 ],
-                'source_url' => 'https://eruvaaka.com/wp-content/uploads/test-news.jpg',
             ]]),
         ]);
 

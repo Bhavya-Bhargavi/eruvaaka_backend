@@ -1,4 +1,5 @@
 -- Non-destructive database upgrade for Eruvaaka payments and content APIs
+USE `eruvahli_androidApp`;
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -66,6 +67,27 @@ CREATE TABLE IF NOT EXISTS `subscriptions` (
     PRIMARY KEY (`id`),
     KEY `subscriptions_user_status_end_index` (`user_id`, `status`, `end_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- LOCAL UI TEST ONLY: set the enable flag to 1 only in a local database.
+-- Do not enable this block in production.
+SET @subscription_ui_test_enabled := 0;
+SET @subscription_ui_test_phone := '8618600812';
+SET @subscription_ui_test_user_id := (
+    SELECT `id` FROM `users`
+    WHERE BINARY `phone` = BINARY @subscription_ui_test_phone
+    LIMIT 1
+);
+INSERT INTO `subscriptions` (`user_id`, `start_date`, `end_date`, `plan_type`, `status`, `created_at`, `updated_at`)
+SELECT @subscription_ui_test_user_id, NOW(), DATE_ADD(NOW(), INTERVAL 60 DAY), '1year', 'active', NOW(), NOW()
+WHERE @subscription_ui_test_enabled = 1
+    AND @subscription_ui_test_user_id IS NOT NULL
+    AND EXISTS (SELECT 1 FROM `users` WHERE `id` = @subscription_ui_test_user_id)
+    AND NOT EXISTS (
+            SELECT 1 FROM `subscriptions`
+            WHERE `user_id` = @subscription_ui_test_user_id
+                AND `status` = 'active'
+                AND `end_date` > NOW()
+    );
 
 CREATE TABLE IF NOT EXISTS `contact_messages` (
     `id` bigint unsigned NOT NULL AUTO_INCREMENT,
@@ -279,6 +301,7 @@ CREATE TABLE IF NOT EXISTS `coupons` (
     `discount_type` varchar(20) NOT NULL,
     `discount_value` decimal(12,2) NOT NULL,
     `is_active` tinyint(1) NOT NULL DEFAULT 1,
+    `is_test` tinyint(1) NOT NULL DEFAULT 0,
     `expires_at` date DEFAULT NULL,
     `usage_limit` int unsigned DEFAULT NULL,
     `created_at` timestamp NULL DEFAULT NULL,
@@ -287,6 +310,15 @@ CREATE TABLE IF NOT EXISTS `coupons` (
     UNIQUE KEY `coupons_code_unique` (`code`),
     KEY `coupons_is_active_expires_at_index` (`is_active`, `expires_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+SET @column_exists := (
+    SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'coupons' AND column_name = 'is_test'
+);
+SET @sql := IF(@column_exists = 0, 'ALTER TABLE `coupons` ADD COLUMN `is_test` tinyint(1) NOT NULL DEFAULT 0 AFTER `is_active`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 SET @column_exists := (
     SELECT COUNT(*) FROM information_schema.columns
@@ -340,6 +372,23 @@ ON DUPLICATE KEY UPDATE
     `discount_type` = VALUES(`discount_type`),
     `discount_value` = VALUES(`discount_value`),
     `is_active` = VALUES(`is_active`),
+    `starts_at` = VALUES(`starts_at`),
+    `expires_at` = VALUES(`expires_at`),
+    `usage_limit` = VALUES(`usage_limit`),
+    `offer_title` = VALUES(`offer_title`),
+    `offer_message` = VALUES(`offer_message`),
+    `eligible_plans` = VALUES(`eligible_plans`),
+    `updated_at` = NOW();
+
+INSERT INTO `coupons` (`code`, `discount_type`, `discount_value`, `is_active`, `is_test`, `expires_at`, `usage_limit`, `starts_at`, `offer_title`, `offer_message`, `eligible_plans`, `created_at`, `updated_at`)
+VALUES
+    ('SAVE50', 'percentage', 50.00, 1, 1, NULL, NULL, NULL, 'SAVE50 test offer', '50% off for Razorpay test-mode testing only.', '["1year","3year","5year","emagazine_monthly","print_magazine_monthly","combo_monthly","emagazine_1year","emagazine_3year","emagazine_5year","print_magazine_1year","print_magazine_3year","print_magazine_5year","combo_1year","combo_3year","combo_5year"]', NOW(), NOW()),
+    ('SAVE25', 'percentage', 25.00, 1, 1, NULL, NULL, NULL, 'SAVE25 test offer', '25% off for Razorpay test-mode testing only.', '["1year","3year","5year","emagazine_monthly","print_magazine_monthly","combo_monthly","emagazine_1year","emagazine_3year","emagazine_5year","print_magazine_1year","print_magazine_3year","print_magazine_5year","combo_1year","combo_3year","combo_5year"]', NOW(), NOW())
+ON DUPLICATE KEY UPDATE
+    `discount_type` = VALUES(`discount_type`),
+    `discount_value` = VALUES(`discount_value`),
+    `is_active` = VALUES(`is_active`),
+    `is_test` = VALUES(`is_test`),
     `starts_at` = VALUES(`starts_at`),
     `expires_at` = VALUES(`expires_at`),
     `usage_limit` = VALUES(`usage_limit`),

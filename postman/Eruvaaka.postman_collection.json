@@ -7,6 +7,7 @@
   "variable": [
     { "key": "base_url", "value": "http://127.0.0.1:8000" },
     { "key": "phone", "value": "8618600812" },
+    { "key": "user_id", "value": "" },
     { "key": "otp", "value": "" },
     { "key": "token", "value": "" },
     { "key": "order_id", "value": "" },
@@ -117,7 +118,8 @@
                 "const response = pm.response.json();",
                 "pm.test('OTP verified', function () { pm.response.to.have.status(200); });",
                 "pm.test('Subscription details returned', function () { pm.expect(response.subscription.active).to.be.a('boolean'); pm.expect(response.plans).to.be.an('array'); });",
-                "if (response.token) { pm.collectionVariables.set('token', response.token); }"
+                "if (response.token) { pm.collectionVariables.set('token', response.token); }",
+                "if (response.user?.id) { pm.collectionVariables.set('user_id', response.user.id); }"
               ]
             }
           }],
@@ -134,6 +136,14 @@
           "request": {
             "method": "GET",
             "url": { "raw": "{{base_url}}/api/users/profile", "host": ["{{base_url}}"], "path": ["api", "users", "profile"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Subscription Status",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/subscription-status/{{user_id}}", "host": ["{{base_url}}"], "path": ["api", "subscription-status", "{{user_id}}"] }
           },
           "response": []
         },
@@ -237,6 +247,36 @@
     {
       "name": "Payments",
       "item": [
+        {
+          "name": "Validate Coupon - SAVE50 (test mode)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"coupon_code\": \"SAVE50\",\n  \"plan\": \"1year\"\n}" },
+            "url": { "raw": "{{base_url}}/api/coupon/validate", "host": ["{{base_url}}"], "path": ["api", "coupon", "validate"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Validate Coupon - SAVE25 (test mode)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"coupon_code\": \"SAVE25\",\n  \"plan\": \"1year\"\n}" },
+            "url": { "raw": "{{base_url}}/api/coupon/validate", "host": ["{{base_url}}"], "path": ["api", "coupon", "validate"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Test Order - SAVE50",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"plan\": \"1year\",\n  \"coupon_code\": \"SAVE50\"\n}" },
+            "url": { "raw": "{{base_url}}/api/create-order", "host": ["{{base_url}}"], "path": ["api", "create-order"] }
+          },
+          "response": []
+        },
         {
           "name": "Create Order",
           "event": [{

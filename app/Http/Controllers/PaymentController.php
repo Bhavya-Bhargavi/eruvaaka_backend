@@ -28,12 +28,15 @@ class PaymentController extends Controller
         $planType = $planCatalog->normalizeKey($data['plan']);
         $plan = $planCatalog->get($planType);
         if (!$plan) return response()->json(['message' => 'Unsupported plan'], 422);
-        $originalAmountPaise = (int) $plan['amount'];
+        $originalAmountPaise = $planCatalog->amountFor($plan);
+        if ($originalAmountPaise === null) {
+            return response()->json(['message' => 'Test pricing requires Razorpay test credentials and an amount of at least ₹1'], 503);
+        }
         $amountPaise = $originalAmountPaise;
         $coupon = null;
         $discountPaise = 0;
         if (!empty($data['coupon_code'])) {
-            $quote = $couponService->quote($data['coupon_code'], $userId, $amountPaise);
+            $quote = $couponService->quote($data['coupon_code'], $userId, $amountPaise, $planType);
             if (!$quote['valid']) return response()->json(['valid' => false, 'message' => $quote['message']], $quote['status']);
             $coupon = $quote['coupon'];
             $discountPaise = $quote['discount_amount'];
@@ -51,8 +54,8 @@ class PaymentController extends Controller
                 'message' => $exception->getMessage(),
                 'user_id' => $userId,
                 'plan' => $planType,
-                'key_id' => $keyId,
-                'secret_fingerprint' => substr(hash('sha256', $keySecret), 0, 12),
+                'amount_paise' => $amountPaise,
+                'coupon_code' => $data['coupon_code'] ?? null,
             ]);
             return response()->json(['message' => 'Payment gateway request failed'], 502);
         }
@@ -75,12 +78,17 @@ class PaymentController extends Controller
         $plan = $planCatalog->get($data['plan']);
         if (!$plan) return response()->json(['valid' => false, 'message' => 'Unsupported plan'], 422);
 
-        $quote = $couponService->quote($data['coupon_code'], $this->userId($request), (int) $plan['amount']);
+        $amountPaise = $planCatalog->amountFor($plan);
+        if ($amountPaise === null) {
+            return response()->json(['valid' => false, 'message' => 'Test pricing requires Razorpay test credentials and an amount of at least ₹1'], 503);
+        }
+
+        $quote = $couponService->quote($data['coupon_code'], $this->userId($request), $amountPaise, $data['plan']);
         if (!$quote['valid']) return response()->json(['valid' => false, 'message' => $quote['message']], $quote['status']);
 
         return response()->json([
             'valid' => true,
-            'original_amount' => round(((int) $plan['amount']) / 100, 2),
+            'original_amount' => round($amountPaise / 100, 2),
             'discount' => round($quote['discount_amount'] / 100, 2),
             'final_amount' => round($quote['final_amount'] / 100, 2),
             'currency' => 'INR',
@@ -175,6 +183,10 @@ class PaymentController extends Controller
         $planCatalog = app(MagazinePlanCatalog::class);
         $subscriptions = Subscription::where('user_id', $userId)->get();
         $currentSubscription = $subscriptions->sortByDesc('end_date')->first();
+        $activeSubscriptions = $subscriptions->filter(fn (Subscription $subscription): bool =>
+            $subscription->status === 'active' && $subscription->end_date->isFuture()
+        );
+        $expirySubscription = $activeSubscriptions->sortBy('end_date')->first();
         $productAccess = [];
         foreach (['emagazine', 'print_magazine'] as $product) {
             $productAccess[$product] = $subscriptions->contains(fn (Subscription $subscription): bool =>
@@ -184,6 +196,10 @@ class PaymentController extends Controller
             );
         }
         $active = in_array(true, $productAccess, true);
+        $expiryDate = $active ? $expirySubscription?->end_date : null;
+        $daysRemaining = $expiryDate
+            ? (int) Carbon::today()->diffInDays($expiryDate->copy()->startOfDay())
+            : null;
 
         foreach ($subscriptions as $subscription) {
             if ($subscription->status === 'active' && !$subscription->end_date->isFuture()) {
@@ -198,6 +214,10 @@ class PaymentController extends Controller
 
         return [
             'status' => $active ? 'active' : 'expired',
+            'is_subscribed' => $active,
+            'expiry_date' => $expiryDate?->toDateString(),
+            'days_remaining' => $daysRemaining,
+            'show_expiry_notification' => $active && $daysRemaining <= 60,
             'plan' => $currentSubscription?->plan_type,
             'start_date' => $currentSubscription?->start_date,
             'end_date' => $currentSubscription?->end_date,

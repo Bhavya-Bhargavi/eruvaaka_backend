@@ -117,6 +117,50 @@ class CouponValidationTest extends TestCase
         }
     }
 
+    public function test_percentage_coupon_quotes_use_two_rupee_test_amount_only_with_test_credentials(): void
+    {
+        config([
+            'services.razorpay.test_mode' => true,
+            'services.razorpay.test_amount' => 200,
+            'services.razorpay.key_id' => 'rzp_test_example',
+        ]);
+        $save50 = Coupon::create([
+            'code' => 'SAVE50',
+            'discount_type' => 'percentage',
+            'discount_value' => 50,
+            'is_active' => true,
+            'is_test' => true,
+        ]);
+        $save25 = Coupon::create([
+            'code' => 'SAVE25',
+            'discount_type' => 'percentage',
+            'discount_value' => 25,
+            'is_active' => true,
+            'is_test' => true,
+        ]);
+        $user = User::factory()->create();
+        $token = $this->tokenFor($user->id);
+
+        $this->withToken($token)
+            ->postJson('/api/coupon/validate', ['coupon_code' => $save50->code, 'plan' => '1year'])
+            ->assertOk()
+            ->assertExactJson(['valid' => true, 'original_amount' => 2, 'discount' => 1, 'final_amount' => 1, 'currency' => 'INR']);
+
+        $this->withToken($token)
+            ->postJson('/api/coupon/validate', ['coupon_code' => $save25->code, 'plan' => '1year'])
+            ->assertOk()
+            ->assertExactJson(['valid' => true, 'original_amount' => 2, 'discount' => 0.5, 'final_amount' => 1.5, 'currency' => 'INR']);
+
+        config([
+            'services.razorpay.test_mode' => false,
+            'services.razorpay.key_id' => 'rzp_live_example',
+        ]);
+        $this->withToken($token)
+            ->postJson('/api/coupon/validate', ['coupon_code' => $save50->code, 'plan' => '1year'])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This test coupon requires Razorpay test credentials');
+    }
+
     private function tokenFor(int $userId): string
     {
         $secret = 'coupon-validation-test-secret';

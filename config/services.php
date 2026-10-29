@@ -50,6 +50,8 @@ return [
     'razorpay' => [
         'key_id' => env('RAZORPAY_KEY_ID'),
         'key_secret' => env('RAZORPAY_KEY_SECRET'),
+        'test_mode' => (bool) env('RAZORPAY_TEST_MODE', false),
+        'test_amount' => (int) env('RAZORPAY_TEST_AMOUNT', 2) * 100,
         'plans' => [
             '1year' => ['name' => '1 Year', 'type' => 'legacy', 'amount' => (int) env('RAZORPAY_1YEAR_AMOUNT', $yearlyAmount) * 100, 'years' => 1, 'products' => ['emagazine', 'print_magazine']],
             '3year' => ['name' => '3 Years', 'type' => 'legacy', 'amount' => (int) env('RAZORPAY_3YEAR_AMOUNT', 20) * 100, 'years' => 3, 'products' => ['emagazine', 'print_magazine']],

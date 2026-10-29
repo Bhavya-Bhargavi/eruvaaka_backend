@@ -80,6 +80,10 @@ class PaymentPlanTest extends TestCase
         $this->withToken($token)
             ->getJson('/api/subscription-status/'.$user->id)
             ->assertOk()
+            ->assertJsonPath('is_subscribed', false)
+            ->assertJsonPath('expiry_date', null)
+            ->assertJsonPath('days_remaining', null)
+            ->assertJsonPath('show_expiry_notification', false)
             ->assertJsonPath('subscription.active', false)
             ->assertJsonPath('content_access.emagazine.visible', true)
             ->assertJsonPath('content_access.emagazine.accessible', false)
@@ -105,7 +109,7 @@ class PaymentPlanTest extends TestCase
         Subscription::create([
             'user_id' => $user->id,
             'start_date' => now()->subDay(),
-            'end_date' => now()->addYear(),
+            'end_date' => now()->addDays(47),
             'plan_type' => '1year',
             'status' => 'active',
         ]);
@@ -113,6 +117,10 @@ class PaymentPlanTest extends TestCase
         $this->withToken($this->tokenFor($user->id))
             ->getJson('/api/subscription-status/'.$user->id)
             ->assertOk()
+            ->assertJsonPath('is_subscribed', true)
+            ->assertJsonPath('expiry_date', now()->addDays(47)->toDateString())
+            ->assertJsonPath('days_remaining', 47)
+            ->assertJsonPath('show_expiry_notification', true)
             ->assertJsonPath('subscription.active', true)
             ->assertJsonPath('subscription.plan_id', '1')
             ->assertJsonPath('content_access.emagazine.accessible', true)
