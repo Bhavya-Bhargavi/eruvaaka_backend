@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Book;
 use App\Models\User;
 use App\Models\Subscription;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -70,6 +71,44 @@ class PaymentPlanTest extends TestCase
             ->postJson('/api/create-order', ['plan' => 'emagazine_monthly'])
             ->assertStatus(500)
             ->assertJsonPath('message', 'Payment gateway is not configured');
+    }
+
+    public function test_book_orders_use_configured_price_and_reject_unpriced_books(): void
+    {
+        config([
+            'services.razorpay.key_id' => '',
+            'services.razorpay.key_secret' => '',
+        ]);
+        $user = User::factory()->create(['phone' => '9876543219']);
+        $token = $this->tokenFor($user->id);
+        $pricedBook = Book::create([
+            'slug' => 'priced-book',
+            'title' => 'Priced Book',
+            'content' => 'Book content',
+            'price_minor' => 12500,
+            'is_published' => true,
+        ]);
+        $freeBook = Book::create([
+            'slug' => 'unpriced-book',
+            'title' => 'Unpriced Book',
+            'content' => 'Book content',
+            'is_published' => true,
+        ]);
+
+        $this->withToken($token)
+            ->postJson('/api/create-order', ['book_id' => $pricedBook->id])
+            ->assertStatus(500)
+            ->assertJsonPath('message', 'Payment gateway is not configured');
+
+        $this->withToken($token)
+            ->postJson('/api/create-order', ['book_id' => $freeBook->id])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Book is not available for purchase');
+
+        $this->withToken($token)
+            ->postJson('/api/create-order', ['book_id' => $pricedBook->id, 'plan' => '1year'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['plan', 'book_id']);
     }
 
     public function test_subscription_status_returns_content_guidance_for_inactive_user(): void

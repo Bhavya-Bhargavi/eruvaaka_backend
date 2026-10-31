@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\Book;
+use App\Models\BookPurchase;
 use App\Models\AgriculturalJob;
 use App\Models\Epaper;
 use App\Models\Emagazine;
 use App\Models\ForumComment;
 use App\Models\ForumDiscussion;
+use App\Models\PaymentOrder;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -132,6 +134,49 @@ class ContentApiTest extends TestCase
             ->assertJsonPath('data.content', 'Readable book content');
 
         $this->getJson('/api/books/'.$book->id.'/download')->assertNotFound();
+    }
+
+    public function test_paid_book_content_is_only_available_to_its_purchaser(): void
+    {
+        $book = Book::create([
+            'slug' => 'paid-book',
+            'title' => 'Paid Book',
+            'content' => 'Paid book content',
+            'price_minor' => 25000,
+            'is_published' => true,
+        ]);
+        $owner = User::factory()->create();
+        $otherUser = User::factory()->create();
+
+        $this->getJson('/api/books')
+            ->assertOk()
+            ->assertJsonPath('data.0.price_minor', 25000)
+            ->assertJsonPath('data.0.currency', 'INR');
+
+        $this->getJson('/api/books/'.$book->id)->assertUnauthorized();
+        $this->withToken($this->tokenFor($otherUser->id))
+            ->getJson('/api/books/'.$book->id)
+            ->assertForbidden();
+
+        $paymentOrder = PaymentOrder::create([
+            'user_id' => $owner->id,
+            'razorpay_order_id' => 'order_paid_book_test',
+            'amount' => 25000,
+            'currency' => 'INR',
+            'receipt' => 'receipt_paid_book_test',
+            'book_id' => $book->id,
+            'status' => 'paid',
+        ]);
+        BookPurchase::create([
+            'user_id' => $owner->id,
+            'book_id' => $book->id,
+            'payment_order_id' => $paymentOrder->id,
+        ]);
+
+        $this->withToken($this->tokenFor($owner->id))
+            ->getJson('/api/books/'.$book->id)
+            ->assertOk()
+            ->assertJsonPath('data.content', 'Paid book content');
     }
 
     public function test_forum_comments_require_authentication_and_do_not_expose_user_contact_data(): void

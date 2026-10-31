@@ -61,6 +61,7 @@ class CouponService
         return [
             'valid' => true,
             'coupon' => $coupon,
+            'original_amount' => $amountPaise,
             'discount_amount' => $discountPaise,
             'final_amount' => $amountPaise - $discountPaise,
         ];

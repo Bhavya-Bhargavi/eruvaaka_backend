@@ -1,5 +1,7 @@
 -- Non-destructive database upgrade for Eruvaaka payments and content APIs
-USE `eruvahli_androidApp`;
+-- Select the target application database in your SQL client before running this file.
+-- Demo coupons use fixed discounts: DEV25/SAVE25 INR 3; DEV50/SAVE50 INR 5.
+-- Regular subscription prices remain configured by Laravel environment settings.
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS=0;
 
@@ -322,6 +324,15 @@ DEALLOCATE PREPARE stmt;
 
 SET @column_exists := (
     SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'coupons' AND column_name = 'checkout_amount_minor'
+);
+SET @sql := IF(@column_exists > 0, 'ALTER TABLE `coupons` DROP COLUMN `checkout_amount_minor`', 'DO 0');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @column_exists := (
+    SELECT COUNT(*) FROM information_schema.columns
     WHERE table_schema = DATABASE() AND table_name = 'coupons' AND column_name = 'starts_at'
 );
 SET @sql := IF(@column_exists = 0, 'ALTER TABLE `coupons` ADD COLUMN `starts_at` date DEFAULT NULL AFTER `is_active`', 'SELECT 1');
@@ -382,8 +393,10 @@ ON DUPLICATE KEY UPDATE
 
 INSERT INTO `coupons` (`code`, `discount_type`, `discount_value`, `is_active`, `is_test`, `expires_at`, `usage_limit`, `starts_at`, `offer_title`, `offer_message`, `eligible_plans`, `created_at`, `updated_at`)
 VALUES
-    ('SAVE50', 'percentage', 50.00, 1, 1, NULL, NULL, NULL, 'SAVE50 test offer', '50% off for Razorpay test-mode testing only.', '["1year","3year","5year","emagazine_monthly","print_magazine_monthly","combo_monthly","emagazine_1year","emagazine_3year","emagazine_5year","print_magazine_1year","print_magazine_3year","print_magazine_5year","combo_1year","combo_3year","combo_5year"]', NOW(), NOW()),
-    ('SAVE25', 'percentage', 25.00, 1, 1, NULL, NULL, NULL, 'SAVE25 test offer', '25% off for Razorpay test-mode testing only.', '["1year","3year","5year","emagazine_monthly","print_magazine_monthly","combo_monthly","emagazine_1year","emagazine_3year","emagazine_5year","print_magazine_1year","print_magazine_3year","print_magazine_5year","combo_1year","combo_3year","combo_5year"]', NOW(), NOW())
+    ('SAVE50', 'fixed', 5.00, 1, 0, NULL, NULL, NULL, 'Demo INR 5 Discount', 'INR 5 off eligible magazine subscription plans.', '["yearly","1year","3year","5year","emagazine_monthly","print_magazine_monthly","combo_monthly","emagazine_1year","emagazine_3year","emagazine_5year","print_magazine_1year","print_magazine_3year","print_magazine_5year","combo_1year","combo_3year","combo_5year"]', NOW(), NOW()),
+    ('SAVE25', 'fixed', 3.00, 1, 0, NULL, NULL, NULL, 'Demo INR 3 Discount', 'INR 3 off eligible magazine subscription plans.', '["yearly","1year","3year","5year","emagazine_monthly","print_magazine_monthly","combo_monthly","emagazine_1year","emagazine_3year","emagazine_5year","print_magazine_1year","print_magazine_3year","print_magazine_5year","combo_1year","combo_3year","combo_5year"]', NOW(), NOW()),
+    ('DEV25', 'fixed', 3.00, 1, 0, NULL, NULL, NULL, 'Demo INR 3 Discount', 'INR 3 off eligible magazine subscription plans.', '["yearly","1year","3year","5year","emagazine_monthly","print_magazine_monthly","combo_monthly","emagazine_1year","emagazine_3year","emagazine_5year","print_magazine_1year","print_magazine_3year","print_magazine_5year","combo_1year","combo_3year","combo_5year"]', NOW(), NOW()),
+    ('DEV50', 'fixed', 5.00, 1, 0, NULL, NULL, NULL, 'Demo INR 5 Discount', 'INR 5 off eligible magazine subscription plans.', '["yearly","1year","3year","5year","emagazine_monthly","print_magazine_monthly","combo_monthly","emagazine_1year","emagazine_3year","emagazine_5year","print_magazine_1year","print_magazine_3year","print_magazine_5year","combo_1year","combo_3year","combo_5year"]', NOW(), NOW())
 ON DUPLICATE KEY UPDATE
     `discount_type` = VALUES(`discount_type`),
     `discount_value` = VALUES(`discount_value`),

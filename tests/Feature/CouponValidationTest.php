@@ -35,6 +35,11 @@ class CouponValidationTest extends TestCase
             ->assertOk()
             ->assertExactJson(['valid' => true, 'original_amount' => 750, 'discount' => 500, 'final_amount' => 250, 'currency' => 'INR']);
 
+        $this->withToken($this->tokenFor($otherUser->id))
+            ->postJson('/api/coupon/validate', ['couponCode' => 'save500', 'plan' => '1year'])
+            ->assertOk()
+            ->assertExactJson(['valid' => true, 'original_amount' => 750, 'discount' => 500, 'final_amount' => 250, 'currency' => 'INR']);
+
         $this->withToken($this->tokenFor($user->id))
             ->postJson('/api/coupon/validate', ['coupon_code' => 'SAVE500', 'plan' => '1year'])
             ->assertStatus(409)
@@ -115,6 +120,47 @@ class CouponValidationTest extends TestCase
                     ]);
             }
         }
+    }
+
+    public function test_demo_coupons_apply_fixed_discount_amounts(): void
+    {
+        config(['services.razorpay.plans.1year.amount' => 75000]);
+        Coupon::create([
+            'code' => 'DEV25',
+            'discount_type' => 'fixed',
+            'discount_value' => 3,
+            'is_active' => true,
+        ]);
+        Coupon::create([
+            'code' => 'DEV50',
+            'discount_type' => 'fixed',
+            'discount_value' => 5,
+            'is_active' => true,
+        ]);
+        $user = User::factory()->create();
+        $token = $this->tokenFor($user->id);
+
+        $this->withToken($token)
+            ->postJson('/api/coupon/validate', ['coupon_code' => 'DEV25', 'plan' => 'emagazine_1year'])
+            ->assertOk()
+            ->assertExactJson([
+                'valid' => true,
+                'original_amount' => 750,
+                'discount' => 3,
+                'final_amount' => 747,
+                'currency' => 'INR',
+            ]);
+
+        $this->withToken($token)
+            ->postJson('/api/coupon/validate', ['coupon_code' => 'DEV50', 'plan' => 'emagazine_1year'])
+            ->assertOk()
+            ->assertExactJson([
+                'valid' => true,
+                'original_amount' => 750,
+                'discount' => 5,
+                'final_amount' => 745,
+                'currency' => 'INR',
+            ]);
     }
 
     public function test_percentage_coupon_quotes_use_two_rupee_test_amount_only_with_test_credentials(): void

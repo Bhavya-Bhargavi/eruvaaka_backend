@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\CouponValidationRequest;
 use App\Http\Requests\CreatePaymentOrderRequest;
+use App\Models\Book;
+use App\Models\BookPurchase;
 use App\Models\CouponUsage;
 use App\Models\PaymentOrder;
 use App\Models\Subscription;
@@ -25,12 +27,25 @@ class PaymentController extends Controller
         $data = $request->validated();
         $userId = $this->userId($request);
         if (isset($data['userId']) && (int) $data['userId'] !== $userId) return response()->json(['message' => 'You can only create an order for yourself'], 403);
-        $planType = $planCatalog->normalizeKey($data['plan']);
-        $plan = $planCatalog->get($planType);
-        if (!$plan) return response()->json(['message' => 'Unsupported plan'], 422);
-        $originalAmountPaise = $planCatalog->amountFor($plan);
-        if ($originalAmountPaise === null) {
-            return response()->json(['message' => 'Test pricing requires Razorpay test credentials and an amount of at least ₹1'], 503);
+        $book = null;
+        if (isset($data['book_id'])) {
+            $book = Book::where('is_published', true)->find($data['book_id']);
+            if (!$book) return response()->json(['message' => 'Book not found'], 404);
+            if (!$book->price_minor || $book->price_minor < 100) return response()->json(['message' => 'Book is not available for purchase'], 422);
+            if (BookPurchase::where('user_id', $userId)->where('book_id', $book->id)->exists()) {
+                return response()->json(['message' => 'You already own this book'], 409);
+            }
+            $planType = 'book_'.$book->id;
+            $plan = ['name' => $book->title];
+            $originalAmountPaise = $book->price_minor;
+        } else {
+            $planType = $planCatalog->normalizeKey($data['plan']);
+            $plan = $planCatalog->get($planType);
+            if (!$plan) return response()->json(['message' => 'Unsupported plan'], 422);
+            $originalAmountPaise = $planCatalog->amountFor($plan);
+            if ($originalAmountPaise === null) {
+                return response()->json(['message' => 'Test pricing requires Razorpay test credentials and an amount of at least ₹1'], 503);
+            }
         }
         $amountPaise = $originalAmountPaise;
         $coupon = null;
@@ -39,6 +54,7 @@ class PaymentController extends Controller
             $quote = $couponService->quote($data['coupon_code'], $userId, $amountPaise, $planType);
             if (!$quote['valid']) return response()->json(['valid' => false, 'message' => $quote['message']], $quote['status']);
             $coupon = $quote['coupon'];
+            $originalAmountPaise = $quote['original_amount'];
             $discountPaise = $quote['discount_amount'];
             $amountPaise = $quote['final_amount'];
         }
@@ -47,7 +63,9 @@ class PaymentController extends Controller
         if ($keyId === '' || $keySecret === '') return response()->json(['message' => 'Payment gateway is not configured'], 500);
         $receipt = 'eru_'.bin2hex(random_bytes(12));
         try {
-            $gateway = (new Api($keyId, $keySecret))->order->create(['amount' => $amountPaise, 'currency' => 'INR', 'receipt' => $receipt, 'notes' => ['userId' => (string) $userId, 'plan' => $planType]]);
+            $notes = ['userId' => (string) $userId, 'type' => $book ? 'book' : 'subscription'];
+            $notes[$book ? 'book_id' : 'plan'] = (string) ($book?->id ?? $planType);
+            $gateway = (new Api($keyId, $keySecret))->order->create(['amount' => $amountPaise, 'currency' => 'INR', 'receipt' => $receipt, 'notes' => $notes]);
         } catch (\Throwable $exception) {
             Log::error('Razorpay order creation failed', [
                 'exception' => get_class($exception),
@@ -59,7 +77,7 @@ class PaymentController extends Controller
             ]);
             return response()->json(['message' => 'Payment gateway request failed'], 502);
         }
-        PaymentOrder::create(['user_id' => $userId, 'razorpay_order_id' => $gateway['id'], 'amount' => $amountPaise, 'currency' => 'INR', 'receipt' => $receipt, 'plan_type' => $planType, 'shipping_address' => $data['shipping_address'] ?? null, 'status' => 'created', 'coupon_id' => $coupon?->id, 'discount_amount' => $discountPaise]);
+        PaymentOrder::create(['user_id' => $userId, 'razorpay_order_id' => $gateway['id'], 'amount' => $amountPaise, 'currency' => 'INR', 'receipt' => $receipt, 'plan_type' => $book ? null : $planType, 'book_id' => $book?->id, 'shipping_address' => $data['shipping_address'] ?? null, 'status' => 'created', 'coupon_id' => $coupon?->id, 'discount_amount' => $discountPaise]);
         return response()->json([
             'message' => 'Payment order created',
             'order_id' => $gateway['id'],
@@ -68,6 +86,9 @@ class PaymentController extends Controller
             'discount' => round($discountPaise / 100, 2),
             'final_amount' => round($amountPaise / 100, 2),
             'currency' => 'INR',
+            'item_type' => $book ? 'book' : 'subscription',
+            'book_id' => $book?->id,
+            'book_title' => $book?->title,
             'order' => ['id' => $gateway['id'], 'amount' => $amountPaise, 'currency' => 'INR', 'receipt' => $receipt, 'key_id' => $keyId],
         ], 201);
     }
@@ -75,20 +96,28 @@ class PaymentController extends Controller
     public function validateCoupon(CouponValidationRequest $request, CouponService $couponService, MagazinePlanCatalog $planCatalog): JsonResponse
     {
         $data = $request->validated();
-        $plan = $planCatalog->get($data['plan']);
-        if (!$plan) return response()->json(['valid' => false, 'message' => 'Unsupported plan'], 422);
-
-        $amountPaise = $planCatalog->amountFor($plan);
-        if ($amountPaise === null) {
-            return response()->json(['valid' => false, 'message' => 'Test pricing requires Razorpay test credentials and an amount of at least ₹1'], 503);
+        if (isset($data['book_id'])) {
+            $book = Book::where('is_published', true)->find($data['book_id']);
+            if (!$book) return response()->json(['valid' => false, 'message' => 'Book not found'], 404);
+            if (!$book->price_minor || $book->price_minor < 100) return response()->json(['valid' => false, 'message' => 'Book is not available for purchase'], 422);
+            $planKey = 'book_'.$book->id;
+            $amountPaise = $book->price_minor;
+        } else {
+            $plan = $planCatalog->get($data['plan']);
+            if (!$plan) return response()->json(['valid' => false, 'message' => 'Unsupported plan'], 422);
+            $planKey = $planCatalog->normalizeKey($data['plan']);
+            $amountPaise = $planCatalog->amountFor($plan);
+            if ($amountPaise === null) {
+                return response()->json(['valid' => false, 'message' => 'Test pricing requires Razorpay test credentials and an amount of at least ₹1'], 503);
+            }
         }
 
-        $quote = $couponService->quote($data['coupon_code'], $this->userId($request), $amountPaise, $data['plan']);
+        $quote = $couponService->quote($data['coupon_code'], $this->userId($request), $amountPaise, $planKey);
         if (!$quote['valid']) return response()->json(['valid' => false, 'message' => $quote['message']], $quote['status']);
 
         return response()->json([
             'valid' => true,
-            'original_amount' => round($amountPaise / 100, 2),
+            'original_amount' => round($quote['original_amount'] / 100, 2),
             'discount' => round($quote['discount_amount'] / 100, 2),
             'final_amount' => round($quote['final_amount'] / 100, 2),
             'currency' => 'INR',
@@ -111,13 +140,15 @@ class PaymentController extends Controller
         $order = PaymentOrder::where('razorpay_order_id', $data['order_id'])->where('user_id', $this->userId($request))->first();
         if (!$order) return response()->json(['message' => 'Payment order not found'], 404);
         if ($order->currency !== 'INR' || $order->status === 'paid') return response()->json(['message' => 'Payment order cannot be verified'], 409);
+        $book = $order->book_id ? Book::find($order->book_id) : null;
+        if ($order->book_id && !$book) return response()->json(['message' => 'Payment order book no longer exists'], 409);
         $planCatalog = app(MagazinePlanCatalog::class);
-        $planType = $planCatalog->normalizeKey($order->plan_type ?? '');
-        $plan = $planCatalog->get($planType);
-        if (!$plan) return response()->json(['message' => 'Payment order has an unsupported plan'], 409);
+        $planType = $book ? null : $planCatalog->normalizeKey($order->plan_type ?? '');
+        $plan = $book ? null : $planCatalog->get($planType);
+        if (!$book && !$plan) return response()->json(['message' => 'Payment order has an unsupported plan'], 409);
         try { (new Api((string) config('services.razorpay.key_id'), (string) config('services.razorpay.key_secret')))->utility->verifyPaymentSignature(['razorpay_order_id' => $data['order_id'], 'razorpay_payment_id' => $data['payment_id'], 'razorpay_signature' => $data['signature']]); }
         catch (\Throwable) { return response()->json(['success' => false, 'message' => 'Payment signature verification failed'], 400); }
-        DB::transaction(function () use ($order, $data, $plan, $planType, $planCatalog): void {
+        DB::transaction(function () use ($order, $data, $book, $plan, $planType, $planCatalog): void {
             $order->update(['razorpay_payment_id' => $data['payment_id'], 'signature' => $data['signature'], 'status' => 'paid']);
             if ($order->coupon_id) {
                 CouponUsage::firstOrCreate(
@@ -125,6 +156,14 @@ class PaymentController extends Controller
                     ['payment_order_id' => $order->id, 'discount_amount' => $order->discount_amount, 'used_at' => now()]
                 );
             }
+            if ($book) {
+                BookPurchase::firstOrCreate(
+                    ['user_id' => $order->user_id, 'book_id' => $book->id],
+                    ['payment_order_id' => $order->id]
+                );
+                return;
+            }
+
             $existingSubscriptions = Subscription::where('user_id', $order->user_id)
                 ->where('status', 'active')
                 ->get();
@@ -150,7 +189,7 @@ class PaymentController extends Controller
             User::whereKey($order->user_id)->update(['subscription_status' => 'active']);
         });
         $user = User::find($order->user_id);
-        if ($user) {
+        if ($user && $book === null) {
             try {
                 app(InfinitoSmsService::class)->sendPaymentConfirmation($user->phone, $planType, $data['payment_id']);
             } catch (\Throwable $exception) {
@@ -163,12 +202,22 @@ class PaymentController extends Controller
             }
         }
 
-        return response()->json(array_merge([
+        $paymentResponse = [
             'success' => true,
             'message' => 'Payment verified successfully',
             'payment_id' => $data['payment_id'],
             'order_id' => $data['order_id'],
-        ], $this->subscriptionResponse((int) $order->user_id)));
+        ];
+        if ($book) {
+            return response()->json(array_merge($paymentResponse, [
+                'purchase_type' => 'book',
+                'book_id' => $book->id,
+                'book_url' => '/api/books/'.$book->id,
+                'next_action' => 'open_book',
+            ]));
+        }
+
+        return response()->json(array_merge($paymentResponse, $this->subscriptionResponse((int) $order->user_id)));
     }
 
     public function subscriptionStatus(int $userId, Request $request): JsonResponse

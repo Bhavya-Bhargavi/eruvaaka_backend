@@ -9,10 +9,11 @@ use Symfony\Component\HttpFoundation\Response;
 
 class LegacyJwtMiddleware
 {
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, string $mode = 'required'): Response
     {
         $token = $request->bearerToken();
         if ($token === null) {
+            if ($mode === 'optional') return $next($request);
             return response()->json(['message' => 'Access denied. Token missing.'], 401);
         }
 

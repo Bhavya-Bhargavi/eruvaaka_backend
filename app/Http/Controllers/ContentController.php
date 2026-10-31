@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Book;
+use App\Models\BookPurchase;
 use App\Models\Epaper;
 use App\Models\Emagazine;
 use App\Models\ForumComment;
@@ -22,15 +23,25 @@ class ContentController extends Controller
         return response()->json([
             'data' => Book::where('is_published', true)
                 ->latest('id')
-                ->get(['id', 'slug', 'title', 'author', 'description', 'cover_image']),
+                ->get(['id', 'slug', 'title', 'author', 'description', 'cover_image', 'price_minor'])
+                ->map(fn (Book $book): array => array_merge($book->only(['id', 'slug', 'title', 'author', 'description', 'cover_image', 'price_minor']), ['currency' => 'INR'])),
         ]);
     }
 
-    public function book(string $bookId): JsonResponse
+    public function book(string $bookId, Request $request): JsonResponse
     {
         $book = Book::where('is_published', true)->findOrFail($bookId);
+        if ((int) $book->price_minor > 0) {
+            $claims = $request->attributes->get('jwt_claims');
+            if (!is_array($claims) || !isset($claims['id'])) {
+                return response()->json(['message' => 'Authentication required to read this book'], 401);
+            }
+            if (!BookPurchase::where('user_id', (int) $claims['id'])->where('book_id', $book->id)->exists()) {
+                return response()->json(['message' => 'Purchase required to read this book'], 403);
+            }
+        }
 
-        return response()->json(['data' => $book->only(['id', 'slug', 'title', 'author', 'description', 'content', 'cover_image'])]);
+        return response()->json(['data' => array_merge($book->only(['id', 'slug', 'title', 'author', 'description', 'content', 'cover_image', 'price_minor']), ['currency' => 'INR'])]);
     }
 
     public function forums(): JsonResponse

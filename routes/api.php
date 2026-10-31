@@ -17,7 +17,7 @@ Route::get('jobs', [JobController::class, 'index']);
 Route::get('jobs/{jobId}', [JobController::class, 'show'])->whereNumber('jobId');
 Route::post('contact', [ContactController::class, 'store']);
 Route::get('books', [ContentController::class, 'books']);
-Route::get('books/{bookId}', [ContentController::class, 'book']);
+Route::get('books/{bookId}', [ContentController::class, 'book'])->middleware('legacy.auth:optional');
 Route::get('forums', [ContentController::class, 'forums']);
 Route::get('forums/{forumId}', [ContentController::class, 'forum']);
 Route::get('forums/{forumId}/comments', [ContentController::class, 'comments']);
