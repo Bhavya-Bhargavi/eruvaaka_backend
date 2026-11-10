@@ -118,6 +118,83 @@ CREATE TABLE IF NOT EXISTS `books` (
     UNIQUE KEY `books_slug_unique` (`slug`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+SET @column_exists := (
+    SELECT COUNT(*)
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'books'
+      AND column_name = 'price_minor'
+);
+SET @sql := IF(
+    @column_exists = 0,
+    'ALTER TABLE `books` ADD COLUMN `price_minor` bigint unsigned DEFAULT NULL AFTER `cover_image`',
+    'DO 0'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @column_exists := (
+    SELECT COUNT(*)
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'payment_orders'
+      AND column_name = 'book_id'
+);
+SET @sql := IF(
+    @column_exists = 0,
+    'ALTER TABLE `payment_orders` ADD COLUMN `book_id` bigint unsigned DEFAULT NULL AFTER `plan_type`',
+    'DO 0'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @foreign_key_exists := (
+    SELECT COUNT(*)
+    FROM information_schema.key_column_usage
+    WHERE table_schema = DATABASE()
+      AND table_name = 'payment_orders'
+      AND column_name = 'book_id'
+      AND referenced_table_name = 'books'
+);
+SET @sql := IF(
+    @foreign_key_exists = 0,
+    'ALTER TABLE `payment_orders` ADD CONSTRAINT `payment_orders_book_id_foreign` FOREIGN KEY (`book_id`) REFERENCES `books` (`id`) ON DELETE SET NULL',
+    'DO 0'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @users_id_type := (
+    SELECT `COLUMN_TYPE`
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'users'
+      AND column_name = 'id'
+    LIMIT 1
+);
+SET @sql := CONCAT(
+    'CREATE TABLE IF NOT EXISTS `book_purchases` (',
+    '`id` bigint unsigned NOT NULL AUTO_INCREMENT,',
+    '`user_id` ', COALESCE(@users_id_type, 'bigint unsigned'), ' NOT NULL,',
+    '`book_id` bigint unsigned NOT NULL,',
+    '`payment_order_id` bigint unsigned NOT NULL,',
+    '`created_at` timestamp NULL DEFAULT NULL,',
+    '`updated_at` timestamp NULL DEFAULT NULL,',
+    'PRIMARY KEY (`id`),',
+    'UNIQUE KEY `book_purchases_payment_order_id_unique` (`payment_order_id`),',
+    'UNIQUE KEY `book_purchases_user_id_book_id_unique` (`user_id`, `book_id`),',
+    'CONSTRAINT `book_purchases_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,',
+    'CONSTRAINT `book_purchases_book_id_foreign` FOREIGN KEY (`book_id`) REFERENCES `books` (`id`) ON DELETE CASCADE,',
+    'CONSTRAINT `book_purchases_payment_order_id_foreign` FOREIGN KEY (`payment_order_id`) REFERENCES `payment_orders` (`id`) ON DELETE CASCADE',
+    ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 CREATE TABLE IF NOT EXISTS `forum_discussions` (
     `id` bigint unsigned NOT NULL AUTO_INCREMENT,
     `slug` varchar(255) NOT NULL,
@@ -536,6 +613,38 @@ FROM `migrations`
 WHERE NOT EXISTS (
     SELECT 1 FROM `migrations`
     WHERE `migration` = '2026_10_27_000002_add_eligible_plans_to_coupons'
+);
+
+INSERT INTO `migrations` (`migration`, `batch`)
+SELECT '2026_10_31_000001_add_book_purchases_and_book_order_support', COALESCE(MAX(`batch`), 0) + 1
+FROM `migrations`
+WHERE NOT EXISTS (
+    SELECT 1 FROM `migrations`
+    WHERE `migration` = '2026_10_31_000001_add_book_purchases_and_book_order_support'
+);
+
+INSERT INTO `migrations` (`migration`, `batch`)
+SELECT '2026_10_31_000002_seed_live_demo_coupons', COALESCE(MAX(`batch`), 0) + 1
+FROM `migrations`
+WHERE NOT EXISTS (
+    SELECT 1 FROM `migrations`
+    WHERE `migration` = '2026_10_31_000002_seed_live_demo_coupons'
+);
+
+INSERT INTO `migrations` (`migration`, `batch`)
+SELECT '2026_10_31_000003_add_checkout_amount_minor_to_coupons', COALESCE(MAX(`batch`), 0) + 1
+FROM `migrations`
+WHERE NOT EXISTS (
+    SELECT 1 FROM `migrations`
+    WHERE `migration` = '2026_10_31_000003_add_checkout_amount_minor_to_coupons'
+);
+
+INSERT INTO `migrations` (`migration`, `batch`)
+SELECT '2026_10_31_000004_remove_coupon_checkout_amount_minor', COALESCE(MAX(`batch`), 0) + 1
+FROM `migrations`
+WHERE NOT EXISTS (
+    SELECT 1 FROM `migrations`
+    WHERE `migration` = '2026_10_31_000004_remove_coupon_checkout_amount_minor'
 );
 
 CREATE TABLE IF NOT EXISTS `agricultural_jobs` (

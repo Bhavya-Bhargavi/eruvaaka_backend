@@ -341,6 +341,31 @@
           "response": []
         },
         {
+          "name": "Create Book Order",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "const response = pm.response.json();",
+                "pm.test('Book Razorpay order created', function () { pm.response.to.have.status(201); });",
+                "pm.test('Order is for a book', function () { pm.expect(response.item_type).to.eql('book'); pm.expect(String(response.book_id)).to.eql(String(pm.collectionVariables.get('book_id'))); });",
+                "if (response.order_id) { pm.collectionVariables.set('order_id', response.order_id); }"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{book_id}}\"\n}" },
+            "url": { "raw": "{{base_url}}/api/create-order", "host": ["{{base_url}}"], "path": ["api", "create-order"] }
+          },
+          "response": []
+        },
+        {
           "name": "Verify Payment",
           "request": {
             "method": "POST",
