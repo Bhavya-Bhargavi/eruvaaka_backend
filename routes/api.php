@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\PublishedContentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContentController;
@@ -34,6 +35,16 @@ Route::prefix('auth')->group(function (): void {
     Route::post('logout', [AuthController::class, 'logout'])->middleware('legacy.auth');
 });
 
+Route::prefix('v2')->name('api.v2.')->group(function (): void {
+    Route::get('books', [PublishedContentController::class, 'books'])->name('books.index');
+    Route::get('books/{book}', [PublishedContentController::class, 'book'])->middleware('legacy.auth:optional')->name('books.show');
+    Route::get('books/{book}/download', [PublishedContentController::class, 'downloadBook'])->middleware('legacy.auth:optional')->name('books.download');
+    Route::get('magazines', [PublishedContentController::class, 'magazines'])->name('magazines.index');
+    Route::get('magazines/{magazine}', [PublishedContentController::class, 'magazine'])->name('magazines.show');
+    Route::get('magazines/{magazine}/download', [PublishedContentController::class, 'downloadMagazine'])->name('magazines.download');
+    Route::get('articles', [PublishedContentController::class, 'articles'])->name('articles.index');
+    Route::get('articles/{article}', [PublishedContentController::class, 'article'])->name('articles.show');
+});
 
 Route::middleware('legacy.auth')->group(function (): void {
     Route::post('jobs', [JobController::class, 'store'])->middleware('throttle:10,1');
